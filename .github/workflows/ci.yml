@@ -143,9 +143,12 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      # Release tag x.y.z: "x.y.z" + "latest". Push to main: "build-<short commit hash>".
+      # Release tag x.y.z: "x.y.z" + "latest". Push to main: "build-<short commit hash>". The OCI annotations (description
+      # from the repository's, source, licence) go on the multi-platform index, where the package page reads them.
       - id: meta
         uses: docker/metadata-action@v6
+        env:
+          DOCKER_METADATA_ANNOTATIONS_LEVELS: index
         with:
           images: ${{ env.IMAGE }}
           flavor: latest=false
@@ -158,6 +161,7 @@ jobs:
         run: |
           args=()
           while read -r tag; do args+=(-t "$tag"); done < <(jq -r '.tags[]' <<< "$DOCKER_METADATA_OUTPUT_JSON")
+          while read -r a; do args+=(--annotation "$a"); done < <(jq -r '.annotations[]' <<< "$DOCKER_METADATA_OUTPUT_JSON")
           for digest in *; do args+=("$IMAGE@sha256:$digest"); done
           docker buildx imagetools create "${args[@]}"
       - name: Inspect
