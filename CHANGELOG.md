@@ -4,6 +4,10 @@ Notable changes per release. Releases are tagged `x.y.z`; each heading links to 
 
 ## [Unreleased]
 
+
+
+## [1.0.0](https://github.com/j3lte/dell3115cn-centre/commits/1.0.0)
+
 - Scanner service for the print server: flatbed and feeder, line art, gray and colour at 75–600 dpi, 8- or 16-bit
   colour, scan regions and the panel's Scan button, over HTTP and server-sent events; simulator mode for development.
 - Web app: input and output profiles, flatbed preview with region selection, automatic page orientation, filters
