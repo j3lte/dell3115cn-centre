@@ -1,0 +1,84 @@
+#!/bin/sh
+# CUPS filter application/vnd.cups-pdf -> PCL XL for the Dell MFP Laser 3115cn (Ghostscript pxlcolor/pxlmono).
+# The printer's PostScript interpreter needs minutes for a page that poppler's pdftops had to rasterise
+# (transparency, e.g. Android photo prints: 6+ min at 600 dpi), and prints washed-out colours at lower
+# resolutions. PCL XL rendered on the host prints the same page in about a minute. Text and vectors stay
+# vector; images keep their own resolution; DeltaRow compression is lossless.
+# Options: ColorModel (RGB|Gray), Duplex (None|DuplexNoTumble|DuplexTumble), InputSlot
+# (AutoSelect|1stTray|BypassTray). Job options win over the IPP attributes print-color-mode and sides,
+# which win over the PPD defaults. Page size and orientation follow the PDF pages from pdftopdf.
+# argv: job-id user title copies options [file]
+set -u
+GS="${DELL3115_GS:-gs}"
+tmp=$(mktemp -d) || exit 1
+trap 'rm -rf "$tmp"' EXIT
+in="${6:-}"
+if [ -z "$in" ]; then
+  cat > "$tmp/in.pdf"
+  in="$tmp/in.pdf"
+fi
+
+ppd_default() {
+  [ -n "${PPD:-}" ] && [ -r "$PPD" ] || return 0
+  sed -n "s/^\*Default$1: *\([^ ]*\).*/\1/p" "$PPD" | tr -d '\r' | head -n 1
+}
+
+color=$(ppd_default ColorModel)
+duplex=$(ppd_default Duplex)
+slot=$(ppd_default InputSlot)
+ipp_color="" ipp_sides="" opt_color="" opt_duplex="" opt_slot=""
+for o in $5; do
+  case "$o" in
+    print-color-mode=*) ipp_color=${o#*=} ;;
+    sides=*) ipp_sides=${o#*=} ;;
+    ColorModel=*) opt_color=${o#*=} ;;
+    Duplex=*) opt_duplex=${o#*=} ;;
+    InputSlot=*) opt_slot=${o#*=} ;;
+  esac
+done
+case "$ipp_color" in
+  monochrome|auto-monochrome|process-monochrome) color=Gray ;;
+  color) color=RGB ;;
+esac
+case "$ipp_sides" in
+  one-sided) duplex=None ;;
+  two-sided-long-edge) duplex=DuplexNoTumble ;;
+  two-sided-short-edge) duplex=DuplexTumble ;;
+esac
+[ -n "$opt_color" ] && color=$opt_color
+[ -n "$opt_duplex" ] && duplex=$opt_duplex
+[ -n "$opt_slot" ] && slot=$opt_slot
+
+case "$color" in
+  Gray) set -- -sDEVICE=pxlmono ;;
+  *) set -- -sDEVICE=pxlcolor ;;
+esac
+case "$duplex" in
+  DuplexNoTumble) set -- "$@" -dDuplex=true -dTumble=false ;;
+  DuplexTumble) set -- "$@" -dDuplex=true -dTumble=true ;;
+esac
+case "$slot" in
+  1stTray) set -- "$@" -dMediaPosition=4 ;;   # PCL XL eUpperCassette
+  BypassTray) set -- "$@" -dManualFeed=true ;; # PCL XL eManualFeed, as the PostScript PPD did
+esac
+
+render() {
+  "$GS" -q -dNOPAUSE -dBATCH -dSAFER -sstdout=%stderr -r600 -dCompressMode=3 "$@" -sOutputFile="$out" "$in"
+  rc=$?
+  [ $rc -eq 0 ] || echo "ERROR: Ghostscript failed (exit $rc)" >&2
+  return $rc
+}
+
+echo "INFO: Rendering PCL XL ($color, duplex $duplex, tray $slot)" >&2
+case "$duplex" in
+  DuplexNoTumble|DuplexTumble)
+    # Ghostscript 10.0 marks every page as a front side; pxl-duplex-sides.py fixes that.
+    out="$tmp/out.pxl"
+    render "$@" || exit 1
+    python3 "${DELL3115_PXL_SIDES:-/usr/local/lib/dell3115cn/pxl-duplex-sides.py}" < "$out"
+    ;;
+  *)
+    out=%stdout
+    render "$@"
+    ;;
+esac

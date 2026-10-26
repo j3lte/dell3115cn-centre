@@ -1,0 +1,22 @@
+[Unit]
+Description=Dell MFP Laser 3115cn scanner service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=scan3115
+Group=scanner
+WorkingDirectory=/opt/scan3115
+ExecStart=/usr/bin/python3 -m scan3115
+Environment=SCAN3115_SPOOL=/var/lib/scan3115
+EnvironmentFile=-/etc/default/scan3115
+StateDirectory=scan3115
+Restart=always
+RestartSec=3
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target

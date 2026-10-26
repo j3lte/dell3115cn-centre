@@ -1,0 +1,114 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 430" width="900" height="430" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" role="img" aria-labelledby="title desc">
+  <title id="title">dell3115cn-centre architecture</title>
+  <desc id="desc">Phones, browsers and AI assistants use the web app (web UI, REST API, MCP server). The web app talks to the scanner service on the Raspberry Pi print server over HTTP and server-sent events; the scanner service drives the scanner over USB interface 0. Print clients use CUPS on the same Pi over IPP; CUPS renders PCL XL and prints over USB interface 1. One USB cable connects the Pi and the Dell 3115cn.</desc>
+  <style>
+    .group { fill: #f6f8fa; stroke: #d0d7de; }
+    .box { fill: #ffffff; stroke: #57606a; }
+    .accent { fill: #ddf4ff; stroke: #0969da; }
+    .printer { fill: #24292f; stroke: #24292f; }
+    .t { fill: #1f2328; font-size: 14px; }
+    .tb { fill: #1f2328; font-size: 15px; font-weight: 600; }
+    .ts { fill: #57606a; font-size: 12px; }
+    .tg { fill: #57606a; font-size: 12px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; }
+    .tp { fill: #ffffff; font-size: 15px; font-weight: 600; }
+    .tps { fill: #d0d7de; font-size: 12px; }
+    .line { stroke: #57606a; stroke-width: 1.6; fill: none; }
+    .arrow { fill: #57606a; }
+    .lbl { fill: #0969da; font-size: 12px; font-weight: 600; }
+    .lblbg { fill: #ffffff; }
+    @media (prefers-color-scheme: dark) {
+      .group { fill: #161b22; stroke: #30363d; }
+      .box { fill: #0d1117; stroke: #8b949e; }
+      .accent { fill: #0c2d6b; stroke: #4493f8; }
+      .printer { fill: #e6edf3; stroke: #e6edf3; }
+      .t, .tb { fill: #e6edf3; }
+      .ts, .tg { fill: #8b949e; }
+      .tp { fill: #0d1117; }
+      .tps { fill: #57606a; }
+      .line { stroke: #8b949e; }
+      .arrow { fill: #8b949e; }
+      .lbl { fill: #4493f8; }
+      .lblbg { fill: #0d1117; }
+    }
+  </style>
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path class="arrow" d="M0,0 L10,5 L0,10 z"/>
+    </marker>
+  </defs>
+
+  <!-- Clients -->
+  <text class="tg" x="20" y="28">Clients</text>
+  <rect class="box" x="20" y="44" width="190" height="62" rx="10"/>
+  <text class="tb" x="34" y="70">Phone / browser</text>
+  <text class="ts" x="34" y="90">scan, review, history</text>
+
+  <rect class="box" x="20" y="132" width="190" height="62" rx="10"/>
+  <text class="tb" x="34" y="158">AI assistant</text>
+  <text class="ts" x="34" y="178">Claude or any MCP client</text>
+
+  <rect class="box" x="20" y="300" width="190" height="62" rx="10"/>
+  <text class="tb" x="34" y="326">Print clients</text>
+  <text class="ts" x="34" y="346">AirPrint · IPP · Mopria</text>
+
+  <!-- Docker host -->
+  <rect class="group" x="250" y="14" width="220" height="210" rx="14"/>
+  <text class="tg" x="266" y="38">Docker host</text>
+  <rect class="accent" x="266" y="52" width="188" height="156" rx="10"/>
+  <text class="tb" x="280" y="78">webapp</text>
+  <text class="t" x="280" y="102">web UI · /api</text>
+  <text class="t" x="280" y="124">/mcp/ (MCP server)</text>
+  <text class="t" x="280" y="146">/files/ (one-time links)</text>
+  <text class="ts" x="280" y="172">profiles · filters · PDF/TIFF</text>
+  <text class="ts" x="280" y="190">destinations · history</text>
+
+  <!-- Raspberry Pi -->
+  <rect class="group" x="520" y="14" width="220" height="400" rx="14"/>
+  <text class="tg" x="536" y="38">Raspberry Pi print server</text>
+  <rect class="accent" x="536" y="58" width="188" height="110" rx="10"/>
+  <text class="tb" x="550" y="84">scanner-service</text>
+  <text class="t" x="550" y="108">HTTP + SSE, port 8765</text>
+  <text class="ts" x="550" y="130">Python, stdlib + pyusb</text>
+  <text class="ts" x="550" y="150">scan protocol, panel button</text>
+
+  <rect class="accent" x="536" y="270" width="188" height="122" rx="10"/>
+  <text class="tb" x="550" y="296">CUPS</text>
+  <text class="t" x="550" y="320">IPP, port 631</text>
+  <text class="ts" x="550" y="342">PCL XL via Ghostscript</text>
+  <text class="ts" x="550" y="362">supply-level backend</text>
+  <text class="ts" x="550" y="380">mDNS (AirPrint)</text>
+
+  <!-- Printer -->
+  <rect class="printer" x="786" y="58" width="100" height="334" rx="12"/>
+  <text class="tp" x="836" y="210" text-anchor="middle">Dell</text>
+  <text class="tp" x="836" y="230" text-anchor="middle">3115cn</text>
+  <text class="tps" x="836" y="250" text-anchor="middle">one USB</text>
+  <text class="tps" x="836" y="266" text-anchor="middle">cable</text>
+  <text class="tps" x="836" y="108" text-anchor="middle">interface 0</text>
+  <text class="tps" x="836" y="124" text-anchor="middle">scanner</text>
+  <text class="tps" x="836" y="326" text-anchor="middle">interface 1</text>
+  <text class="tps" x="836" y="342" text-anchor="middle">printer</text>
+
+  <!-- Arrows -->
+  <path class="line" d="M210,75 L264,75" marker-end="url(#a)"/>
+  <rect class="lblbg" x="219" y="58" width="36" height="14" rx="3"/>
+  <text class="lbl" x="237" y="69" text-anchor="middle">HTTP</text>
+
+  <path class="line" d="M210,163 L264,163" marker-end="url(#a)"/>
+  <rect class="lblbg" x="222" y="146" width="30" height="14" rx="3"/>
+  <text class="lbl" x="237" y="157" text-anchor="middle">MCP</text>
+
+  <path class="line" d="M454,113 L534,113" marker-end="url(#a)"/>
+  <rect class="lblbg" x="460" y="96" width="68" height="14" rx="3"/>
+  <text class="lbl" x="494" y="107" text-anchor="middle">HTTP + SSE</text>
+
+  <path class="line" d="M724,113 L784,113" marker-end="url(#a)"/>
+  <text class="lbl" x="754" y="107" text-anchor="middle">USB</text>
+
+  <path class="line" d="M210,331 L534,331" marker-end="url(#a)"/>
+  <rect class="lblbg" x="355" y="314" width="34" height="14" rx="3"/>
+  <text class="lbl" x="372" y="325" text-anchor="middle">IPP</text>
+
+  <path class="line" d="M724,331 L784,331" marker-end="url(#a)"/>
+  <text class="lbl" x="754" y="325" text-anchor="middle">USB</text>
+</svg>

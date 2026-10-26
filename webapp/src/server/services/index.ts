@@ -1,0 +1,45 @@
+import type { Database } from "bun:sqlite";
+import type { LiveHub } from "../live";
+import type { PrinterSource } from "../printer";
+import { ProfileRepo } from "../repos/profile-repo";
+import { ScanRepo } from "../repos/scan-repo";
+import { SettingsRepo } from "../repos/settings-repo";
+import type { ScannerClient } from "../scanner-client";
+import type { SecretBox } from "../secrets";
+import { CalibrationService } from "./calibration-service";
+import { PrinterService } from "./printer-service";
+import { ProfileService } from "./profile-service";
+import { ScanService } from "./scan-service";
+import { SettingsService } from "./settings-service";
+
+export type Services = {
+  settings: SettingsService;
+  profiles: ProfileService;
+  scans: ScanService;
+  calibration: CalibrationService;
+  printer: PrinterService;
+  scanner: ScannerClient;
+  hub: LiveHub;
+};
+
+export type ServicesDeps = {
+  db: Database;
+  box: SecretBox;
+  secret: { secret: string; generated: boolean };
+  client: ScannerClient;
+  hub: LiveHub;
+  dataDir: string;
+  printer?: PrinterSource;
+  onMcpChange?: () => void;
+  clock?: () => number;
+};
+
+/** The composition root: one database and one scanner client behind every service. */
+export function createServices(deps: ServicesDeps): Services {
+  const { db, client, hub, dataDir, clock } = deps;
+  const profiles = new ProfileService(new ProfileRepo(db, deps.box));
+  const settings = new SettingsService(new SettingsRepo(db), profiles, deps.secret, deps.onMcpChange);
+  const calibration = new CalibrationService(settings, client, clock);
+  const scans = new ScanService({ repo: new ScanRepo(db), profiles, settings, calibration, client, hub, dataDir }, { clock });
+  return { settings, profiles, scans, calibration, printer: new PrinterService(deps.printer), scanner: client, hub };
+}

@@ -1,0 +1,62 @@
+# Manual release (Actions → Release → Run workflow): tags the head of main with the next version and starts CI on that
+# tag, which tests, publishes the image as "x.y.z" and "latest", and creates the GitHub release and CHANGELOG.md
+# section. Choose major, minor or patch to bump the latest release, or type an exact version.
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: Increase the latest release by (ignored when a version is given)
+        type: choice
+        options: [patch, minor, major]
+        default: patch
+      version:
+        description: Or an exact version x.y.z (optional)
+        type: string
+        required: false
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  tag:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Only from main
+        run: |
+          if [ "$GITHUB_REF" != refs/heads/main ]; then
+            echo "::error::Run the release workflow from main, not $GITHUB_REF_NAME"
+            exit 1
+          fi
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - id: version
+        name: Next version
+        env:
+          BUMP: ${{ inputs.bump }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          v=$(python3 tools/version.py "$BUMP" --version "$VERSION")
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+      - name: Tag the head of main
+        env:
+          V: ${{ steps.version.outputs.version }}
+        run: |
+          git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+            tag -a "$V" -m "$V"
+          git push origin "refs/tags/$V"
+      # A tag pushed with GITHUB_TOKEN does not trigger CI's push event; workflow_dispatch is the exception.
+      - name: Start CI on the tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          V: ${{ steps.version.outputs.version }}
+        run: |
+          gh workflow run ci.yml --ref "$V"
+          echo "Tagged **$V** ($(git rev-parse --short HEAD)). CI on the tag publishes the image and the release." >> "$GITHUB_STEP_SUMMARY"

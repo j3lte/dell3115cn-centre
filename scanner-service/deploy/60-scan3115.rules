@@ -1,0 +1,3 @@
+# Dell MFP Laser 3115cn: let the scanner service (group "scanner") open the USB device.
+# Printing is unaffected: CUPS uses interface 1, the scanner service only claims interface 0.
+SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_device", ATTR{idVendor}=="413c", ATTR{idProduct}=="5607", MODE="0664", GROUP="scanner"

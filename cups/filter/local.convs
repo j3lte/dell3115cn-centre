@@ -1,0 +1,2 @@
+# Prefer the img2pdf filter for JPEGs (cost 60 < imagetopdf 65): keeps JPEG compression.
+image/jpeg application/vnd.cups-pdf 60 imagetopdf-img2pdf

@@ -1,0 +1,9 @@
+[Unit]
+Description=Refresh Dell 3115cn supply levels in CUPS every 6 hours
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=6h
+
+[Install]
+WantedBy=timers.target

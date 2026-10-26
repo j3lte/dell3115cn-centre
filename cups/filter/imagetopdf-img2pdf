@@ -1,0 +1,38 @@
+#!/bin/sh
+# CUPS filter image/jpeg -> application/vnd.cups-pdf that keeps the JPEG compressed.
+# cups-filters' imagetopdf decodes JPEGs to raw pixels, which turns a 1 MB photo into ~23 MB of
+# PostScript for the printer. img2pdf embeds the JPEG bytes unchanged (DCTDecode).
+# Page size comes from the job's PageSize/media option (A4 default); the image is fitted inside a
+# 4.2 mm border (the printer's unprintable margin is 4.1 mm) and the page follows the image orientation.
+# The PDF then goes through pdftopdf (copies, duplex, page options) like any other PDF job,
+# because imagetopdf's own rule (jpeg -> vnd.cups-pdf, cost 65) is cheaper than jpeg -> pdf -> pdftopdf.
+# Falls back to imagetopdf for anything img2pdf can't handle.
+# argv: job-id user title copies options [file]
+set -u
+tmp=$(mktemp -d) || exit 1
+trap 'rm -rf "$tmp"' EXIT
+in="${6:-}"
+if [ -z "$in" ]; then
+  cat > "$tmp/in.jpg"
+  in="$tmp/in.jpg"
+fi
+
+media=""
+for o in $5; do
+  case "$o" in PageSize=*|media=*) media=$(printf '%s' "${o#*=}" | tr '[:upper:]' '[:lower:]') ;; esac
+done
+case "$media" in
+  *letter*) size=Letter ;;
+  *legal*) size=Legal ;;
+  *a5*) size=A5 ;;
+  *) size=A4 ;;
+esac
+
+if img2pdf --pagesize "$size" --fit into --border 4.2mm --auto-orient -o "$tmp/out.pdf" "$in" 2>"$tmp/err"; then
+  echo "INFO: img2pdf: JPEG kept compressed ($size)" >&2
+  /usr/lib/cups/filter/pdftopdf "$1" "$2" "$3" "$4" "$5" "$tmp/out.pdf"
+  exit $?
+else
+  echo "INFO: img2pdf failed ($(head -c 200 "$tmp/err")), falling back to imagetopdf" >&2
+  exec /usr/lib/cups/filter/imagetopdf "$1" "$2" "$3" "$4" "$5" "$in"
+fi

@@ -1,0 +1,198 @@
+# Tests every push and pull request and test-builds the web app image. Publishes the image to GitHub Container
+# Registry (linux/amd64 + linux/arm64): a release tag x.y.z (no "v") as "x.y.z" and "latest"; every other push to
+# main as "build-<short commit hash>". The release workflow (release.yml) starts it on a new tag with workflow_dispatch,
+# because a tag pushed by a workflow does not trigger the push event.
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ["[0-9]+.[0-9]+.[0-9]+"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  IMAGE: ghcr.io/${{ github.repository }}
+
+jobs:
+  # The print server's environment: Debian 12 on arm64 (Python 3.11, Ghostscript 10.0, as on a Raspberry Pi).
+  scanner-service:
+    runs-on: ubuntu-24.04-arm
+    container: debian:bookworm
+    steps:
+      - uses: actions/checkout@v5
+      - run: apt-get update && apt-get install -y --no-install-recommends python3 python3-pytest python3-usb
+      - run: python3 -m pytest -q
+        working-directory: scanner-service
+
+  cups:
+    runs-on: ubuntu-24.04-arm
+    container: debian:bookworm
+    steps:
+      - uses: actions/checkout@v5
+      - run: apt-get update && apt-get install -y --no-install-recommends python3 python3-pytest ghostscript
+      - run: python3 -m pytest -q cups/tests
+
+  tools:
+    runs-on: ubuntu-24.04-arm
+    container: debian:bookworm
+    steps:
+      - uses: actions/checkout@v5
+      - run: apt-get update && apt-get install -y --no-install-recommends python3 python3-pytest git
+      - run: python3 -m pytest -q tools/tests
+
+  webapp:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.0
+      - name: Typecheck
+        working-directory: webapp
+        run: bun install --frozen-lockfile && bunx tsc --noEmit -p .
+      - uses: docker/setup-buildx-action@v3
+      # The image's "test" stage runs the whole suite on Debian (ImageMagick, Tesseract, smbclient);
+      # the runtime stage only builds when it passes.
+      - name: Test and build the image
+        uses: docker/build-push-action@v6
+        with:
+          context: webapp
+          push: false
+          cache-from: type=gha,scope=webapp-amd64
+          cache-to: type=gha,mode=max,scope=webapp-amd64
+
+  # Publish (tags and main, not pull requests): build each platform on a native runner, push by digest, then tag one multi-platform image.
+  image:
+    if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/'))
+    needs: [scanner-service, cups, tools, webapp]
+    strategy:
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-24.04
+            arch: amd64
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+            arch: arm64
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v5
+      - name: Lower-case image name
+        run: echo "IMAGE=${IMAGE,,}" >> "$GITHUB_ENV"
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE }}
+      - id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: webapp
+          platforms: ${{ matrix.platform }}
+          labels: ${{ steps.meta.outputs.labels }}
+          outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
+          cache-from: type=gha,scope=webapp-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=webapp-${{ matrix.arch }}
+      - name: Export digest
+        run: |
+          mkdir -p "$RUNNER_TEMP/digests"
+          touch "$RUNNER_TEMP/digests/${DIGEST#sha256:}"
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: digest-${{ matrix.arch }}
+          path: ${{ runner.temp }}/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  publish:
+    if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/'))
+    needs: image
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Lower-case image name
+        run: echo "IMAGE=${IMAGE,,}" >> "$GITHUB_ENV"
+      - uses: actions/download-artifact@v5
+        with:
+          path: ${{ runner.temp }}/digests
+          pattern: digest-*
+          merge-multiple: true
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      # Release tag x.y.z: "x.y.z" + "latest". Push to main: "build-<short commit hash>".
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE }}
+          flavor: latest=false
+          tags: |
+            type=semver,pattern={{version}}
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/') }}
+            type=sha,prefix=build-,format=short,enable=${{ github.ref == 'refs/heads/main' }}
+      - name: Create the multi-platform image
+        working-directory: ${{ runner.temp }}/digests
+        run: |
+          args=()
+          while read -r tag; do args+=(-t "$tag"); done < <(jq -r '.tags[]' <<< "$DOCKER_METADATA_OUTPUT_JSON")
+          for digest in *; do args+=("$IMAGE@sha256:$digest"); done
+          docker buildx imagetools create "${args[@]}"
+      - name: Inspect
+        run: docker buildx imagetools inspect "$(jq -r '.tags[0]' <<< "$DOCKER_METADATA_OUTPUT_JSON")"
+
+  # Release tag x.y.z, once its image is published: CHANGELOG.md's [Unreleased] section becomes the release (heading
+  # linked to the comparison with the previous release) and its items become the GitHub release notes.
+  release:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: publish
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      # main, not the tag: the changelog commit goes on main. The full history brings every tag.
+      - uses: actions/checkout@v5
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Release the [Unreleased] section
+        run: python3 tools/changelog.py "$GITHUB_REF_NAME" "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" > "$RUNNER_TEMP/notes.md"
+      - name: GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1; then
+            gh release edit "$GITHUB_REF_NAME" --notes-file "$RUNNER_TEMP/notes.md"
+          else
+            gh release create "$GITHUB_REF_NAME" --verify-tag --title "$GITHUB_REF_NAME" --notes-file "$RUNNER_TEMP/notes.md"
+          fi
+      # Pushed with GITHUB_TOKEN, so this commit does not start another CI run.
+      - name: Commit CHANGELOG.md to main
+        run: |
+          git add CHANGELOG.md
+          git diff --cached --quiet && exit 0
+          git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+            commit -m "docs(changelog): $GITHUB_REF_NAME"
+          git push origin HEAD:main

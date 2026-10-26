@@ -1,0 +1,10 @@
+[project]
+name = "scan3115"
+version = "0.1.0"
+description = "Scanner service for the Dell MFP Laser 3115cn"
+requires-python = ">=3.11"
+dependencies = ["pyusb>=1.2"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

@@ -1,0 +1,28 @@
+#!/bin/sh
+# CUPS backend wrapper for the Dell MFP Laser 3115cn: reports supply levels (toner, belt unit, fuser) and printer
+# alerts (covers, trays, error codes) read from the printer's USB device ID, then hands the job to the regular usb
+# backend. After a job and on a refresh it also reads the page count (PostScript query, prints nothing).
+#
+# Device URI: dell3115cn:usb://Dell/MFP%20Laser%203115cn?serial=<serial>&interface=1
+# A job titled "supply-refresh" only updates the levels; nothing is sent to the printer.
+# Install as root, mode 0700, so CUPS runs it (and the usb backend) as root.
+
+SUPPLIES=/usr/local/lib/dell3115cn/dell3115cn-supplies.py
+
+# Discovery mode (no arguments): offer nothing; queues are set up by hand.
+[ $# -eq 0 ] && exit 0
+
+DEVICE_URI="${DEVICE_URI#dell3115cn:}"
+export DEVICE_URI
+
+if [ "$3" = "supply-refresh" ]; then
+  python3 "$SUPPLIES" --pagecount || true
+  exit 0
+fi
+
+python3 "$SUPPLIES" || true          # writes "ATTR:", "STATE:" and "INFO:" lines to stderr for cupsd
+/usr/lib/cups/backend/usb "$@"
+rc=$?
+sleep 1                               # the usb backend may still be releasing the device
+python3 "$SUPPLIES" --pagecount || true
+exit $rc

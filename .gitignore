@@ -1,0 +1,39 @@
+# Private, per machine: local setup notes, superpowers specs/plans/ledgers/worktrees, reference material, scans,
+# config backups, tracking-dot analysis. Never commit.
+.claude/
+
+# Reverse-engineering workspace: Dell's drivers, Ghidra projects, decompiled code (third-party, large).
+re/
+
+# Dell's copyrighted scanner colour profile; supply your own copy (see webapp/assets/README.md).
+*.icm
+*.icc
+
+# Scans and app data (real documents).
+data/
+*.pnm
+*.ppm
+*.pgm
+*.pbm
+# Synthetic test images (made by make-fixtures.sh), not scans.
+!webapp/test/fixtures/*.p?m
+
+# Dependencies, caches, build output.
+node_modules/
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+
+# Superpowers working folders, if a tool creates them at the root anyway.
+.superpowers/
+.worktrees/
+
+# Playwright MCP snapshots
+.playwright-mcp/
+
+# GitNexus code index (local)
+.gitnexus/
+
+# Scalar bundle copied in by the Dockerfile (a build artefact).
+webapp/vendor/

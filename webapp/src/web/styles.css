@@ -1,0 +1,180 @@
+@import "tailwindcss";
+
+/* `dark:` follows the theme choice (data-theme), not only the OS. */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+/* Colour tokens: light by default, dark with data-theme="dark" (set from the theme choice, see theme.ts). Exposed to
+   Tailwind as bg-surface, text-muted, … */
+:root {
+  --c-bg: #f4f2ee;
+  --c-surface: #ffffff;
+  --c-surface-2: #ece9e3;
+  --c-fg: #1d1f22;
+  --c-muted: #5d6168;
+  --c-line: #d9d5cd;
+  --c-accent: #1f6f78;
+  --c-accent-fg: #ffffff;
+  --c-accent-soft: #dcecee;
+  --c-ok: #2a7548;
+  --c-ok-soft: #e1f1e7;
+  --c-warn: #8a5a00;
+  --c-warn-soft: #fbf0d9;
+  --c-danger: #b3261e;
+  --c-danger-soft: #fbe3e1;
+  --c-busy: #3b5ba5;
+  --c-busy-soft: #e3e9f7;
+  --c-paper: #ffffff;
+  color-scheme: light;
+}
+
+:root[data-theme="dark"] {
+  --c-bg: #16181b;
+  --c-surface: #202327;
+  --c-surface-2: #2a2e33;
+  --c-fg: #eceae6;
+  --c-muted: #a3a7ae;
+  --c-line: #363a40;
+  --c-accent: #5fb3bc;
+  --c-accent-fg: #0f1a1c;
+  --c-accent-soft: #1f3538;
+  --c-ok: #74c69a;
+  --c-ok-soft: #1d3326;
+  --c-warn: #e6b45a;
+  --c-warn-soft: #3a2f1a;
+  --c-danger: #f08a80;
+  --c-danger-soft: #3d2220;
+  --c-busy: #93acec;
+  --c-busy-soft: #232c42;
+  --c-paper: #e9e7e3;
+  color-scheme: dark;
+}
+
+@theme inline {
+  --color-bg: var(--c-bg);
+  --color-surface: var(--c-surface);
+  --color-surface-2: var(--c-surface-2);
+  --color-fg: var(--c-fg);
+  --color-muted: var(--c-muted);
+  --color-line: var(--c-line);
+  --color-accent: var(--c-accent);
+  --color-accent-fg: var(--c-accent-fg);
+  --color-accent-soft: var(--c-accent-soft);
+  --color-ok: var(--c-ok);
+  --color-ok-soft: var(--c-ok-soft);
+  --color-warn: var(--c-warn);
+  --color-warn-soft: var(--c-warn-soft);
+  --color-danger: var(--c-danger);
+  --color-danger-soft: var(--c-danger-soft);
+  --color-busy: var(--c-busy);
+  --color-busy-soft: var(--c-busy-soft);
+  --color-paper: var(--c-paper);
+  --spacing-tap: 44px;
+}
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+  body {
+    @apply bg-bg text-fg antialiased;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    overflow-x: hidden;
+  }
+  :focus-visible {
+    @apply outline-3 outline-offset-2 outline-accent;
+  }
+}
+
+/* Shared building blocks; layout lives in the components as utilities. */
+@layer components {
+  .card {
+    @apply flex min-w-0 flex-col gap-3 rounded-2xl border border-line bg-surface p-4 shadow-sm dark:shadow-none;
+  }
+  .btn {
+    @apply inline-flex min-h-tap max-w-full cursor-pointer items-center justify-center gap-2 truncate rounded-xl border border-line bg-surface px-4 py-2 font-semibold text-fg no-underline transition-colors hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-surface;
+  }
+  .btn-primary {
+    @apply border-accent bg-accent text-accent-fg hover:bg-accent hover:brightness-110 disabled:hover:bg-accent;
+  }
+  .btn-danger {
+    @apply border-danger text-danger;
+  }
+  .btn-big {
+    @apply min-h-15 rounded-2xl text-xl;
+  }
+  .btn-sm {
+    @apply min-h-9 px-3 py-1 text-sm;
+  }
+  .icon-btn {
+    @apply inline-flex size-tap flex-none cursor-pointer items-center justify-center rounded-xl text-xl text-muted hover:bg-surface-2 hover:text-fg disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:bg-transparent;
+  }
+  .field {
+    @apply flex min-w-0 flex-col gap-1.5;
+  }
+  .field-label {
+    @apply text-sm font-semibold text-muted;
+  }
+  .control {
+    @apply min-h-tap w-full min-w-0 rounded-xl border border-line bg-surface px-3 py-2 text-base text-fg placeholder:text-muted/60;
+  }
+  select.control {
+    @apply appearance-none pr-9;
+    background-image: linear-gradient(45deg, transparent 50%, var(--c-muted) 50%), linear-gradient(135deg, var(--c-muted) 50%, transparent 50%);
+    background-position:
+      calc(100% - 18px) 55%,
+      calc(100% - 13px) 55%;
+    background-size: 5px 5px;
+    background-repeat: no-repeat;
+  }
+  .msg {
+    @apply m-0 rounded-xl px-3 py-2.5 [overflow-wrap:anywhere];
+  }
+  .msg-error {
+    @apply bg-danger-soft text-danger;
+  }
+  .msg-warn {
+    @apply bg-warn-soft text-warn;
+  }
+  .msg-ok {
+    @apply bg-ok-soft text-ok;
+  }
+  .hint {
+    @apply m-0 text-sm text-muted;
+  }
+  .badge {
+    @apply inline-block rounded-full bg-surface-2 px-2 py-0.5 text-xs font-bold whitespace-nowrap text-muted;
+  }
+  .badge-ok {
+    @apply bg-ok-soft text-ok;
+  }
+  .badge-warn {
+    @apply bg-warn-soft text-warn;
+  }
+  .badge-error {
+    @apply bg-danger-soft text-danger;
+  }
+  .badge-busy {
+    @apply bg-busy-soft text-busy;
+  }
+  .badge-mcp {
+    @apply bg-accent-soft text-accent;
+  }
+  .chip {
+    @apply inline-flex min-h-10 cursor-pointer items-center rounded-full border border-line bg-surface px-3.5 text-sm font-semibold text-fg data-[state=on]:border-accent data-[state=on]:bg-accent-soft data-[state=on]:text-accent disabled:opacity-50;
+  }
+  .spinner {
+    @apply size-5 flex-none animate-spin rounded-full border-3 border-busy-soft border-t-busy;
+  }
+  .paper {
+    @apply rounded-md border border-line bg-paper;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}
