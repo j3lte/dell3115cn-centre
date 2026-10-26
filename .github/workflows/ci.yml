@@ -27,7 +27,7 @@ jobs:
     runs-on: ubuntu-24.04-arm
     container: debian:bookworm
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - run: apt-get update && apt-get install -y --no-install-recommends python3 python3-pytest python3-usb
       - run: python3 -m pytest -q
         working-directory: scanner-service
@@ -36,7 +36,7 @@ jobs:
     runs-on: ubuntu-24.04-arm
     container: debian:bookworm
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - run: apt-get update && apt-get install -y --no-install-recommends python3 python3-pytest ghostscript
       - run: python3 -m pytest -q cups/tests
 
@@ -44,25 +44,25 @@ jobs:
     runs-on: ubuntu-24.04-arm
     container: debian:bookworm
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - run: apt-get update && apt-get install -y --no-install-recommends python3 python3-pytest git
       - run: python3 -m pytest -q tools/tests
 
   webapp:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.4.0
       - name: Typecheck
         working-directory: webapp
         run: bun install --frozen-lockfile && bunx tsc --noEmit -p .
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v4
       # The image's "test" stage runs the whole suite on Debian (ImageMagick, Tesseract, smbclient);
       # the runtime stage only builds when it passes.
       - name: Test and build the image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: webapp
           push: false
@@ -87,21 +87,21 @@ jobs:
       contents: read
       packages: write
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - name: Lower-case image name
         run: echo "IMAGE=${IMAGE,,}" >> "$GITHUB_ENV"
-      - uses: docker/setup-buildx-action@v3
-      - uses: docker/login-action@v3
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ${{ env.IMAGE }}
       - id: build
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: webapp
           platforms: ${{ matrix.platform }}
@@ -115,7 +115,7 @@ jobs:
           touch "$RUNNER_TEMP/digests/${DIGEST#sha256:}"
         env:
           DIGEST: ${{ steps.build.outputs.digest }}
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: digest-${{ matrix.arch }}
           path: ${{ runner.temp }}/digests/*
@@ -132,20 +132,20 @@ jobs:
     steps:
       - name: Lower-case image name
         run: echo "IMAGE=${IMAGE,,}" >> "$GITHUB_ENV"
-      - uses: actions/download-artifact@v5
+      - uses: actions/download-artifact@v8
         with:
           path: ${{ runner.temp }}/digests
           pattern: digest-*
           merge-multiple: true
-      - uses: docker/setup-buildx-action@v3
-      - uses: docker/login-action@v3
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       # Release tag x.y.z: "x.y.z" + "latest". Push to main: "build-<short commit hash>".
       - id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ${{ env.IMAGE }}
           flavor: latest=false
@@ -173,7 +173,7 @@ jobs:
       contents: write
     steps:
       # main, not the tag: the changelog commit goes on main. The full history brings every tag.
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           ref: main
           fetch-depth: 0
