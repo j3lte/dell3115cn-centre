@@ -67,16 +67,26 @@ const app = createApp(services);
 const mcpOn = settings.ensureMcpKey().mcpEnabled;
 const mcp = mcpHandler({ services, downloads, dataDir: config.dataDir });
 
+// Bun closes a connection that is quiet for about 10 s; in Bun 1.4.4 that hits requests without a body (GET, or a POST
+// like Preview), and a preview or a download link that first builds its file answers later than that. So requests to
+// these routes have no idle timeout.
+const untimed =
+  (handler: (req: Request) => Response | Promise<Response>) =>
+  (req: Request, srv: { timeout(req: Request, seconds: number): void }): Response | Promise<Response> => {
+    srv.timeout(req, 0);
+    return handler(req);
+  };
+
 const server = Bun.serve({
   port: config.port,
   // HMR and unminified bundles only when explicitly not in production.
   development: process.env.NODE_ENV !== "production" && { hmr: true },
   routes: {
     "/": indexHtml,
-    "/api/*": (req) => app.fetch(req),
-    "/files/*": downloadHandler(downloads),
-    "/mcp": (req) => mcp(req),
-    "/mcp/": (req) => mcp(req),
+    "/api/*": untimed((req) => app.fetch(req)),
+    "/files/*": untimed(downloadHandler(downloads)),
+    "/mcp": untimed((req) => mcp(req)),
+    "/mcp/": untimed((req) => mcp(req)),
   },
   fetch(req, srv) {
     if (new URL(req.url).pathname === "/ws") {
