@@ -1,4 +1,5 @@
-import { beforeEach, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
+import { sftp } from "../src/server/destinations/sftp";
 import { openDb } from "../src/server/db";
 import { ProfileRepo } from "../src/server/repos/profile-repo";
 import { ValidationError } from "../src/server/profiles";
@@ -100,4 +101,82 @@ test("addCommon twice adds nothing the second time", () => {
 test("testOutput and getOutputForUse on a missing id reject with ValidationError", async () => {
   await expect(service.testOutput(99999)).rejects.toThrow(ValidationError);
   expect(() => service.getOutputForUse(99999)).toThrow("Output profile 99999 not found");
+});
+
+// ---- retired SMB and SFTP's trusted host key
+
+const SMB_RETIRED = "SMB is no longer supported; choose another destination";
+const HOST_KEY = `SHA256:${"k".repeat(43)}`;
+
+function withSmbRow(): { service: ProfileService; id: number } {
+  const db = openDb(":memory:");
+  const box = new SecretBox("secret-a");
+  const config = JSON.stringify({ server: "nas.example", share: "scans", path: "", username: "u", password: box.seal("pw") });
+  const id = db
+    .query<{ id: number }, [string]>(
+      "INSERT INTO output_profiles (name, format, jpeg_quality, filename_template, destination_type, destination_config) VALUES ('Old NAS', 'pdf_multi', 80, '{date}', 'smb', ?) RETURNING id",
+    )
+    .get(config)!.id;
+  return { service: new ProfileService(new ProfileRepo(db, box)), id };
+}
+
+test("an SMB profile from an older version still loads (secret masked) but refuses to be used or saved", async () => {
+  const { service: s, id } = withSmbRow();
+  const p = s.getOutput(id);
+  expect(p.destination).toEqual({ type: "smb", config: { server: "nas.example", share: "scans", path: "", username: "u", password: "••••" } });
+  expect(s.listOutput().some((x) => x.id === id && x.destination.type === "smb")).toBe(true);
+  await expect(s.testOutput(id)).rejects.toThrow(SMB_RETIRED);
+  await expect(s.testDestination("smb", p.destination.config, id, "targets")).rejects.toThrow(SMB_RETIRED);
+  expect(() => s.saveOutput({ ...p }, "targets")).toThrow(SMB_RETIRED);
+  // Switching it to another destination works.
+  const switched = s.saveOutput({ ...p, destination: { type: "folder", config: { path: "/export" } } }, "targets");
+  expect(switched.destination.type).toBe("folder");
+});
+
+const sftpProfile = (config: Record<string, unknown> = {}) => ({
+  name: "Server",
+  format: "pdf_multi" as const,
+  jpegQuality: 80,
+  filenameTemplate: "{date}_scan",
+  destination: { type: "sftp" as const, config: { host: "files.example", port: 22, path: "scans", username: "u", password: "pw", ...config } },
+});
+
+describe("sftp host key (trust on first use)", () => {
+  afterEach(() => mock.restore());
+
+  test("a saved profile's first Test stores the host key; secrets survive", async () => {
+    spyOn(sftp, "test").mockResolvedValue({ hostKey: HOST_KEY });
+    const saved = service.saveOutput(sftpProfile(), "targets");
+    expect(await service.testOutput(saved.id)).toEqual({ hostKey: HOST_KEY });
+    expect(service.getOutput(saved.id).destination.config).toMatchObject({ hostKey: HOST_KEY, password: "••••" });
+    expect(service.getOutputForUse(saved.id).destination.config.password).toBe("pw");
+  });
+
+  test("Test of an unsaved form returns the key; it is stored only for the same profile and host", async () => {
+    spyOn(sftp, "test").mockResolvedValue({ hostKey: HOST_KEY });
+    expect(await service.testDestination("sftp", sftpProfile().destination.config, undefined, "targets")).toEqual({ hostKey: HOST_KEY });
+    const saved = service.saveOutput(sftpProfile(), "targets");
+    const elsewhere = { ...saved.destination.config, host: "other.example", password: "pw2" };
+    expect(await service.testDestination("sftp", elsewhere, saved.id, "targets")).toEqual({ hostKey: HOST_KEY });
+    expect(service.getOutput(saved.id).destination.config.hostKey).toBeUndefined();
+    await service.testDestination("sftp", saved.destination.config, saved.id, "targets");
+    expect(service.getOutput(saved.id).destination.config.hostKey).toBe(HOST_KEY);
+  });
+
+  test("learn() never replaces a stored key and ignores a profile that changed type", () => {
+    const saved = service.saveOutput(sftpProfile({ hostKey: HOST_KEY }), "targets");
+    service.learn(saved.id, "sftp", saved.destination.config, { hostKey: `SHA256:${"x".repeat(43)}` });
+    expect(service.getOutput(saved.id).destination.config.hostKey).toBe(HOST_KEY);
+    service.learn(saved.id, "ftp", saved.destination.config, { hostKey: "x" });
+    expect(service.getOutput(saved.id).destination.type).toBe("sftp");
+  });
+
+  test("a cleared host key is saved as empty, so the next Test trusts again", async () => {
+    const saved = service.saveOutput(sftpProfile({ hostKey: HOST_KEY }), "targets");
+    const cleared = service.saveOutput({ ...saved, destination: { ...saved.destination, config: { ...saved.destination.config, hostKey: "" } } }, "targets");
+    expect(cleared.destination.config.hostKey).toBe("");
+    spyOn(sftp, "test").mockResolvedValue({ hostKey: HOST_KEY });
+    await service.testOutput(saved.id);
+    expect(service.getOutput(saved.id).destination.config.hostKey).toBe(HOST_KEY);
+  });
 });

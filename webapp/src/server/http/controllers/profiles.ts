@@ -14,6 +14,10 @@ const invalid = { 400: errBody("Invalid request, or a value the profile rules re
 const notFound = { 404: errBody("No such profile") };
 const params = z.object({ id: IdParam });
 const ok = z.object({ ok: z.literal(true) });
+/** A test's answer: SFTP adds the host key it trusted on first use (see destinations/sftp.ts). */
+const tested = z
+  .object({ ok: z.literal(true), hostKey: z.string().optional().meta({ description: "SFTP: the server's host key fingerprint, trusted on first use" }) })
+  .openapi("DestinationTested");
 const tags = ["Profiles"];
 
 const listInput = createRoute({
@@ -111,7 +115,7 @@ const testOutput = createRoute({
   summary: "Check that a saved profile's destination is reachable",
   request: { params },
   responses: {
-    200: jsonBody(ok, "The destination answered"),
+    200: jsonBody(tested, "The destination answered"),
     ...invalid,
     409: errBody("Stored credentials can't be decrypted"),
     422: errBody("The destination refused the test"),
@@ -134,7 +138,7 @@ const testDestination = createRoute({
   summary: "Check a destination configuration before it is saved",
   request: { body: jsonRequest(DestinationTestSchema) },
   responses: {
-    200: jsonBody(ok, "The destination answered"),
+    200: jsonBody(tested, "The destination answered"),
     ...invalid,
     409: errBody("Stored credentials can't be decrypted"),
     422: errBody("The destination refused the test"),
@@ -165,13 +169,13 @@ export function profilesController(s: Services) {
       return c.body(null, 204);
     })
     .openapi(testOutput, async (c) => {
-      await profiles.testOutput(c.req.valid("param").id);
-      return json(c, { ok: true as const });
+      const learned = await profiles.testOutput(c.req.valid("param").id);
+      return json(c, { ok: true as const, ...learned });
     })
     .openapi(addCommon, (c) => json(c, profiles.addCommon()))
     .openapi(testDestination, async (c) => {
       const { type, config, id } = c.req.valid("json");
-      await profiles.testDestination(type, config ?? {}, id ?? undefined, "targets");
-      return json(c, { ok: true as const });
+      const learned = await profiles.testDestination(type, config ?? {}, id ?? undefined, "targets");
+      return json(c, { ok: true as const, ...learned });
     });
 }

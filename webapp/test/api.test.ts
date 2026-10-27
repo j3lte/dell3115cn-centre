@@ -1,9 +1,10 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import { z } from "@hono/zod-openapi";
 import { hc } from "hono/client";
 import { HTTPException } from "hono/http-exception";
 import { AnalyseClient } from "../src/server/analyse-client";
 import { isUuid } from "../src/server/db";
+import { sftp } from "../src/server/destinations/sftp";
 import { createApp, type AppType } from "../src/server/http/app";
 import { errorResponse } from "../src/server/http/errors";
 import { exact } from "../src/server/http/schemas";
@@ -669,4 +670,27 @@ test("GET /api/features reports analyse off without a client and on with one", a
   expect((await call("GET", "/api/features")).body).toEqual({ analyse: false });
   h.services.analyse = new AnalyseClient("http://analyse.invalid");
   expect((await call("GET", "/api/features")).body).toEqual({ analyse: true });
+});
+
+test("destination tests answer the SFTP host key they learned", async () => {
+  const { call } = await setup();
+  const key = `SHA256:${"k".repeat(43)}`;
+  const spy = spyOn(sftp, "test").mockResolvedValue({ hostKey: key });
+  try {
+    const config = { host: "files.example", username: "u", password: "pw" };
+    expect((await call("POST", "/api/destinations/test", { type: "sftp", config })).body).toEqual({ ok: true, hostKey: key });
+    const created = await call("POST", "/api/output-profiles", { name: "Server", format: "pdf_multi", jpegQuality: 80, filenameTemplate: "scan", destination: { type: "sftp", config } });
+    expect(created.status).toBe(201);
+    expect((await call("POST", `/api/output-profiles/${created.body.id}/test`)).body).toEqual({ ok: true, hostKey: key });
+    expect((await call("GET", `/api/output-profiles/${created.body.id}`)).body.destination.config).toMatchObject({ hostKey: key, password: "••••" });
+  } finally {
+    spy.mockRestore();
+  }
+});
+
+test("SMB destinations can't be created any more", async () => {
+  const { call } = await setup();
+  const r = await call("POST", "/api/output-profiles", { name: "NAS", format: "pdf_multi", jpegQuality: 80, filenameTemplate: "scan", destination: { type: "smb", config: { server: "nas", share: "s" } } });
+  expect(r.status).toBe(400);
+  expect(r.body.message).toBe("SMB is no longer supported; choose another destination");
 });

@@ -31,8 +31,8 @@ export function slug(s: string): string {
 }
 
 /**
- * Characters that are invalid in file names on common file systems and shares, plus ';' (smbclient splits commands
- * on it) and '%' (ImageMagick expands it in output names).
+ * Characters that are invalid in file names on common file systems and shares, plus ';' (a command separator in
+ * shells and many scripts that pick up the files) and '%' (ImageMagick expands it in output names).
  */
 const UNSAFE = /[/\\:*?"<>|;%\u0000-\u001f]/g;
 

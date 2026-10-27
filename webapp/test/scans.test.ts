@@ -1,7 +1,8 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import { existsSync, mkdirSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import sharp from "sharp";
+import { sftp } from "../src/server/destinations/sftp";
 import { DEFAULT_FILTER } from "../src/server/pipeline/filters";
 import { deviceIccPath } from "../src/server/pipeline/icc";
 import { magickAvailable } from "../src/server/pipeline/magick";
@@ -830,4 +831,26 @@ test("exports: leftovers are removed at startup; a failed export leaves no direc
   const dir = join(h.dataDir, "exports", "fail");
   await expect(h.svc.exportFiles(v.id, { page: 9 }, dir)).rejects.toThrow();
   expect(existsSync(dir)).toBe(false);
+});
+
+test("the first SFTP delivery stores the server's host key in the profile (trust on first use)", async () => {
+  h = await makeHarness();
+  const key = `SHA256:${"k".repeat(43)}`;
+  const send = spyOn(sftp, "send").mockResolvedValue({ ref: "scan.pdf", learned: { hostKey: key } });
+  try {
+    const p = h.repo.saveOutput({
+      name: "Server",
+      format: "pdf_multi",
+      jpegQuality: 80,
+      filenameTemplate: "scan",
+      destination: { type: "sftp", config: { host: "files.example", username: "u", password: "pw" } },
+    });
+    const v0 = await h.svc.start(h.input().id, p.id, { review: false });
+    await h.svc.settled(v0.id);
+    expect(h.svc.get(v0.id)!.status).toBe("done");
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(h.repo.getOutput(p.id)!.destination.config).toMatchObject({ hostKey: key, password: "pw" });
+  } finally {
+    send.mockRestore();
+  }
 });

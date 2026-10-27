@@ -58,7 +58,7 @@ describe("renderName", () => {
   test("unknown placeholders left as-is", () => expect(renderName("{foo}_{date}", ctx)).toBe("{foo}_2026-10-26"));
   test("sanitised", () => expect(renderName(' a/b\\c:d*e?f"g<h>i|j ', ctx)).toBe("abcdefghij"));
   test("never empty", () => expect(renderName("///", ctx)).toBe("scan"));
-  test("strips ; and % (smbclient / ImageMagick specials)", () =>
+  test("strips ; and % (shell / ImageMagick specials)", () =>
     expect(renderName("Bill; ACME; deltree Archive; x 50%", ctx)).toBe("Bill ACME deltree Archive x 50"));
 });
 

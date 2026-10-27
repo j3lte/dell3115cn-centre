@@ -110,12 +110,58 @@ describe("forms", () => {
     expect((screen.getByRole("textbox", { name: "Name" }) as HTMLInputElement).value).toBe("Letters (gray 300)");
   });
 
-  test("OutputProfileForm shows the destination's fields", async () => {
+  test("OutputProfileForm shows the destination's fields; SMB is not offered", async () => {
     renderWithQuery(<OutputProfileForm profile={null} />);
-    expect(screen.queryByLabelText("Server")).toBeNull();
-    await user.selectOptions(screen.getByRole("combobox", { name: "Destination" }), "smb");
-    for (const f of DEST_FIELDS.smb) expect(screen.getByLabelText(f.label)).toBeTruthy();
+    expect(screen.queryByLabelText("Host")).toBeNull();
+    const picker = screen.getByRole("combobox", { name: "Destination" });
+    expect(within(picker).queryByRole("option", { name: /SMB/ })).toBeNull();
+    await user.selectOptions(picker, "sftp");
+    for (const f of DEST_FIELDS.sftp.filter((f) => f.kind !== "hostKey")) expect(screen.getByLabelText(f.label)).toBeTruthy();
+    expect((screen.getByLabelText("Private key") as HTMLElement).tagName).toBe("TEXTAREA");
+    expect((screen.getByLabelText("Password") as HTMLInputElement).type).toBe("password");
+    expect(screen.getByText(/Not stored yet/)).toBeTruthy();
     expect(screen.getByRole("button", { name: "Test" })).toBeTruthy();
+  });
+
+  const server = {
+    id: 6,
+    name: "Server",
+    format: "pdf_multi",
+    jpegQuality: 80,
+    filenameTemplate: "{date}_scan",
+    destination: { type: "sftp", config: { host: "files.example", port: 22, path: "scans", username: "u", password: "", privateKey: MASK, passphrase: MASK, hostKey: "" } },
+  } as unknown as OutputProfile;
+
+  test("an SFTP profile masks its stored key, and a Test fills in the trusted host key, which can be cleared", async () => {
+    const key = `SHA256:${"k".repeat(43)}`;
+    const stub = stubFetch((req) => (path(req) === "/api/destinations/test" ? Response.json({ ok: true, hostKey: key }) : Response.json({ ...server })));
+    renderWithQuery(<OutputProfileForm profile={server} />);
+    const pem = screen.getByLabelText("Private key") as HTMLTextAreaElement;
+    expect(pem.value).toBe("");
+    expect(pem.placeholder).toBe("Saved — paste to replace");
+    expect((screen.getByLabelText("Passphrase") as HTMLInputElement).placeholder).toBe("Saved — type to replace");
+    await user.click(screen.getByRole("button", { name: "Test" }));
+    expect(await screen.findByText("✓ Connection works.")).toBeTruthy();
+    expect(screen.getByText(key)).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(stub.calls.map(endpoint)).toContain("PUT /api/output-profiles/6"));
+    const put = stub.calls.find((r) => endpoint(r) === "PUT /api/output-profiles/6")!;
+    expect((await put.json()).destination.config).toMatchObject({ hostKey: key, privateKey: MASK, passphrase: MASK });
+    await user.click(screen.getByRole("button", { name: "Forget host key" }));
+    expect(screen.queryByText(key)).toBeNull();
+    expect(screen.getByText(/Not stored yet/)).toBeTruthy();
+  });
+
+  test("an SMB profile from an older version shows as no longer supported and can be switched", async () => {
+    const old = { ...archive, destination: { type: "smb", config: { server: "nas", share: "s", password: MASK } } } as unknown as OutputProfile;
+    renderWithQuery(<OutputProfileForm profile={old} />);
+    const picker = screen.getByRole("combobox", { name: "Destination" }) as HTMLSelectElement;
+    expect(picker.selectedOptions[0]!.textContent).toBe("SMB share (no longer supported)");
+    expect(screen.getByText("SMB is no longer supported; choose another destination")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Test" })).toBeNull();
+    await user.selectOptions(picker, "sftp");
+    expect(screen.getByLabelText("Host")).toBeTruthy();
+    expect(screen.queryByText("SMB is no longer supported; choose another destination")).toBeNull();
   });
 
   const archive = {

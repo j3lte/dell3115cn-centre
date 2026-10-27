@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync } fr
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { getDestination } from "../destinations";
-import { DeliveryError, ValidationError } from "../destinations/types";
+import { DeliveryError, ValidationError, type Learned } from "../destinations/types";
 import type { LiveHub } from "../live";
 import type { DownloadFile } from "../downloads";
 import { encodeOutputs, type OutFile } from "../output/encode";
@@ -648,8 +648,9 @@ export class ScanService {
         const ctx = { date: new Date(r.created_at), outputProfile: profile.name, inputProfile: input.name, seq: r.seq };
         files = await encodeOutputs(pages, profile, ctx, join(this.scanDir(id), "out", String(did)), this.scanFilter(r));
         this.repo.setDeliveryFiles(did, store());
-        await dest.send(files, cfg, { scanId: id, title: renderName(profile.filenameTemplate, ctx) });
+        const sent = await dest.send(files, cfg, { scanId: id, title: renderName(profile.filenameTemplate, ctx) });
         this.repo.markDeliverySent(did);
+        if (sent.learned) this.remember(outputId, profile, sent.learned);
         this.update(id, { status: "done", error: null });
       } catch (e) {
         const msg = e instanceof SecretError ? `${name}: stored credentials can't be decrypted — re-enter credentials` : message(e);
@@ -661,6 +662,15 @@ export class ScanService {
       }
       this.broadcast(id);
     });
+  }
+
+  /** Stores what a destination learned (SFTP's host key) in the profile; a failure here never fails the delivery. */
+  private remember(outputId: number, profile: OutputProfile, learned: Learned): void {
+    try {
+      this.profiles.learn(outputId, profile.destination.type, profile.destination.config, learned);
+    } catch (e) {
+      console.error(`storing what output profile ${outputId} learned:`, e);
+    }
   }
 
   /** Send a scan from the review tray (optionally to another output profile). */

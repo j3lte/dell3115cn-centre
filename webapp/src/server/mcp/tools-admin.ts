@@ -179,8 +179,7 @@ export function registerAdminTools(server: McpServer, deps: McpDeps): void {
     { description: "Check that a saved output profile's destination is reachable.", inputSchema: { id: z.number().int() } },
     (a) =>
       run(async () => {
-        await profiles.testOutput(a.id);
-        return jsonResult({ ok: true });
+        return jsonResult({ ok: true, ...(await profiles.testOutput(a.id)) });
       }),
   );
   server.registerTool(
@@ -191,8 +190,7 @@ export function registerAdminTools(server: McpServer, deps: McpDeps): void {
     },
     (a) =>
       run(async () => {
-        await profiles.testDestination(a.type, a.config, a.id, "all");
-        return jsonResult({ ok: true });
+        return jsonResult({ ok: true, ...(await profiles.testDestination(a.type, a.config, a.id, "all")) });
       }),
   );
   server.registerTool("add_common_profiles", { description: "Add the common input and output profiles that are missing." }, () =>

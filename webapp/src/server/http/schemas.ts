@@ -1,4 +1,5 @@
 import { z } from "@hono/zod-openapi";
+import { DESTINATION_TYPES, type DestinationType } from "../destinations/types";
 import type { Filter } from "../pipeline/filters";
 import type { PrinterView, Supply } from "../printer";
 import type { WhiteCalibration } from "../pipeline/white";
@@ -108,7 +109,7 @@ export const InputProfileDraftSchema = exact<InputProfileDraft>()(
 );
 
 const destinationFields = {
-  type: z.enum(["download", "folder", "smb", "ftp", "paperless", "papra", "webhook"]),
+  type: z.enum(DESTINATION_TYPES as [DestinationType, ...DestinationType[]]),
   config: z.record(z.string(), z.unknown()),
 };
 

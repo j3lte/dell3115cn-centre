@@ -107,12 +107,12 @@ describe("HistoryList", () => {
 
 describe("ScanDetail", () => {
   test("ScanDetail offers resend for a failed delivery", async () => {
-    const scan = scanOf({ status: "failed", deliveries: [del(1, 1, "failed", "SMB down")] });
-    const sent = scanOf({ deliveries: [del(1, 1, "failed", "SMB down"), del(2, 1, "sent")] });
+    const scan = scanOf({ status: "failed", deliveries: [del(1, 1, "failed", "SFTP down")] });
+    const sent = scanOf({ deliveries: [del(1, 1, "failed", "SFTP down"), del(2, 1, "sent")] });
     const { calls } = stubFetch(() => Response.json(sent));
     const onUpdate = mock(noop);
     renderWithQuery(<ScanDetail scan={scan} outputs={OUTPUTS} desktop={false} onUpdate={onUpdate} onDeleted={noop} />);
-    expect(screen.getByText("SMB down")).toBeTruthy();
+    expect(screen.getByText("SFTP down")).toBeTruthy();
     await user.click(screen.getByRole("button", { name: "Resend" }));
     await act(async () => {});
     expect(calls.map(endpoint)).toEqual(["POST /api/scans/s1/resend"]);

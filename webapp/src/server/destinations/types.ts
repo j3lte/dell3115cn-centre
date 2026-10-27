@@ -1,16 +1,18 @@
-export type DestinationType = "download" | "folder" | "smb" | "ftp" | "paperless" | "papra" | "webhook";
+/** "smb" is retired: old profiles still load, but it refuses every use (see smb.ts). */
+export type DestinationType = "download" | "folder" | "sftp" | "ftp" | "paperless" | "papra" | "webhook" | "smb";
 
-export const DESTINATION_TYPES: DestinationType[] = ["download", "folder", "smb", "ftp", "paperless", "papra", "webhook"];
+export const DESTINATION_TYPES: DestinationType[] = ["download", "folder", "sftp", "ftp", "paperless", "papra", "webhook", "smb"];
 
 /** Config fields that hold credentials: encrypted at rest, never sent to the UI in full. */
 export const SECRET_FIELDS: Record<DestinationType, string[]> = {
   download: [],
   folder: [],
-  smb: ["password"],
+  sftp: ["password", "privateKey", "passphrase"],
   ftp: ["password"],
   paperless: ["token"],
   papra: ["apiKey"],
   webhook: ["headerValue"],
+  smb: ["password"],
 };
 
 /** What the UI gets instead of a stored secret. Sending it back on save keeps the stored value. */
@@ -35,13 +37,16 @@ export type SendMeta = { scanId: string; title: string };
 
 export type DeliveryFile = { name: string; path: string; mime: string };
 
+/** Config fields a destination learned while connecting (SFTP's trusted host key), for the profile to store. */
+export type Learned = Record<string, string>;
+
 export interface Destination<C> {
   type: DestinationType;
   /** Validates an untrusted config (UI form); throws ValidationError. */
   parse(config: unknown): C;
   /** Checks the settings work; throws DeliveryError. */
-  test(c: C): Promise<void>;
-  send(files: DeliveryFile[], c: C, meta: SendMeta): Promise<{ ref?: string }>;
+  test(c: C): Promise<Learned | void>;
+  send(files: DeliveryFile[], c: C, meta: SendMeta): Promise<{ ref?: string; learned?: Learned }>;
 }
 
 // ---- helpers shared by the destination modules ----

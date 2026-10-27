@@ -509,3 +509,12 @@ test("a link to a delivered file whose scan was deleted answers 410", async () =
   const res = await fetch(links.files[0].url);
   expect(res.status).toBe(410);
 });
+
+test("assistants can't create SMB destinations", async () => {
+  const { connect } = await setup();
+  const c = await connect();
+  const smb = { ...paperless(), destination: { type: "smb", config: { server: "nas", share: "s" } } };
+  const r = await c.callTool({ name: "save_output_profile", arguments: { profile: smb } });
+  expect(r.isError).toBe(true);
+  expect(text(r)).toContain("SMB is no longer supported; choose another destination");
+});
