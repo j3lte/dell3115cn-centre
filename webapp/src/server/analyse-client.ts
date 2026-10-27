@@ -1,3 +1,5 @@
+import { z } from "zod";
+
 /** Client for the analyse service (contract: analyse/README.md). Pages go over as PNG, reports come back as JSON. */
 
 export type DedaReport = {
@@ -10,6 +12,24 @@ export type DedaReport = {
   decodeError: string | null;
   images: { overview: string; closeRaw?: string; closeEnhanced?: string; closeYellow?: string };
 };
+
+const ReportSchema = z.object({
+  found: z.boolean(),
+  dots: z.number(),
+  gridScore: z.number(),
+  dpi: z.number(),
+  paperWhite: z.tuple([z.number(), z.number(), z.number()]),
+  decode: z.record(z.string(), z.string()).nullable(),
+  decodeError: z.string().nullable(),
+  images: z.object({
+    overview: z.string(),
+    closeRaw: z.string().optional(),
+    closeEnhanced: z.string().optional(),
+    closeYellow: z.string().optional(),
+  }),
+});
+
+const INVALID = "Analyse service sent an invalid response";
 
 export class AnalyseUnreachable extends Error {
   constructor(message = "Analyse service unreachable") {
@@ -50,7 +70,9 @@ export class AnalyseClient {
         signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
       });
       if (!res.ok) throw new AnalyseFailed(await errorMessage(res));
-      return (await res.json()) as DedaReport;
+      const parsed = ReportSchema.safeParse(await res.json().catch(() => undefined));
+      if (!parsed.success) throw new AnalyseFailed(INVALID);
+      return parsed.data;
     } catch (e) {
       if (e instanceof AnalyseFailed) throw e;
       if (timeout.aborted) throw new AnalyseFailed(`timed out after ${Math.round(this.timeoutMs / 1000)} s`);

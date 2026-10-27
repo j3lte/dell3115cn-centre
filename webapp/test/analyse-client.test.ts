@@ -59,9 +59,10 @@ test("non-JSON error body falls back to the status", async () => {
 });
 
 test("a closed port is AnalyseUnreachable", async () => {
-  const base = serve(() => Response.json(report));
-  server!.stop(true);
-  const err = await new AnalyseClient(base).deda(new Uint8Array([1]), 600).catch((e) => e);
+  const refused = (async () => {
+    throw new TypeError("Unable to connect. Is the computer able to access the url?");
+  }) as unknown as typeof fetch;
+  const err = await new AnalyseClient("http://analyse.invalid", { fetchImpl: refused }).deda(new Uint8Array([1]), 600).catch((e) => e);
   expect(err).toBeInstanceOf(AnalyseUnreachable);
 });
 
@@ -85,4 +86,23 @@ test("the caller's signal aborts the request", async () => {
   const err = await new AnalyseClient(base).deda(new Uint8Array([1]), 600, ctl.signal).catch((e) => e);
   expect(err).toBeInstanceOf(AnalyseFailed);
   expect(err.message).not.toMatch(/timed out/);
+});
+
+test("a 200 that is not JSON is AnalyseFailed, not unreachable", async () => {
+  const base = serve(() => new Response("<html>oops</html>", { headers: { "content-type": "text/html" } }));
+  const err = await new AnalyseClient(base).deda(new Uint8Array([1]), 600).catch((e) => e);
+  expect(err).toBeInstanceOf(AnalyseFailed);
+  expect(err.message).toBe("Analyse service sent an invalid response");
+});
+
+test("a 200 report without images.overview is AnalyseFailed", async () => {
+  const base = serve(() => Response.json({ ...report, images: {} }));
+  const err = await new AnalyseClient(base).deda(new Uint8Array([1]), 600).catch((e) => e);
+  expect(err).toBeInstanceOf(AnalyseFailed);
+  expect(err.message).toBe("Analyse service sent an invalid response");
+});
+
+test("extra report keys such as closeOrigin are stripped", async () => {
+  const base = serve(() => Response.json({ ...report, closeOrigin: [1, 2] }));
+  expect(await new AnalyseClient(base).deda(new Uint8Array([1]), 600)).toEqual(report);
 });

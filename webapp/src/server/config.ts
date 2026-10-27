@@ -19,7 +19,8 @@ export function loadConfig(env: Record<string, string | undefined>): Config {
   const printer = env.PRINTER_URI?.trim();
   if (printer && printer !== "off" && !/^ipps?:\/\//.test(printer)) throw new Error(`PRINTER_URI must start with ipp:// or ipps://: ${printer}`);
   const analyse = env.ANALYSE_ENDPOINT?.trim();
-  if (analyse && !/^https?:\/\//.test(analyse)) throw new Error(`ANALYSE_ENDPOINT must start with http:// or https://: ${analyse}`);
+  if (analyse && !/^https?:\/\/[^/]/.test(analyse)) throw new Error(`ANALYSE_ENDPOINT must start with http:// or https://: ${analyse}`);
+  if (analyse && !URL.canParse(analyse)) throw new Error(`ANALYSE_ENDPOINT is not a valid URL: ${analyse}`);
   return {
     serviceUrl,
     dataDir: env.DATA_DIR || "/data",

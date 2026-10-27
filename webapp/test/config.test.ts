@@ -34,4 +34,6 @@ test("ANALYSE_ENDPOINT: unset or empty is off, trailing slash trimmed, scheme ch
   expect(loadConfig({ ANALYSE_ENDPOINT: "  " }).analyseUrl).toBeNull();
   expect(loadConfig({ ANALYSE_ENDPOINT: "http://x:8770/" }).analyseUrl).toBe("http://x:8770");
   expect(() => loadConfig({ ANALYSE_ENDPOINT: "ftp://x" })).toThrow("ANALYSE_ENDPOINT must start with http:// or https://: ftp://x");
+  expect(() => loadConfig({ ANALYSE_ENDPOINT: "http://" })).toThrow("ANALYSE_ENDPOINT");
+  expect(() => loadConfig({ ANALYSE_ENDPOINT: "http://a b" })).toThrow("ANALYSE_ENDPOINT");
 });
