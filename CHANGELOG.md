@@ -17,6 +17,10 @@ Notable changes per release. Releases are tagged `x.y.z`; each heading links to 
 - The web app image is much smaller: it is based on Alpine Linux instead of Debian and runs a prebuilt bundle of the
   app instead of its source and dependencies. About 100 MiB to download instead of 305 MiB, and about 240 MiB on
   disk instead of 710–740 MiB.
+- New destination **SFTP (SSH)**: uploads to a folder on any machine with an SSH server, with a password or a
+  private key, without overwriting existing files. The server's host key is trusted on first use and checked on every
+  later connection. SMB shares are no longer supported and `smbclient` is gone from the image (about 40 MiB smaller):
+  output profiles that use SMB still show, but fail until you switch them to another destination (for example SFTP).
 
 ## [1.0.0](https://github.com/j3lte/dell3115cn-centre/commits/1.0.0)
 

@@ -6,7 +6,7 @@ Phone-first, responsive web app for the Dell MFP Laser 3115cn scanner. It talks 
 - **Input profiles**: feeder or flatbed, line art / gray / colour, 75–600 dpi, paper size, automatic orientation,
   default filter.
 - **Output profiles**: single- or multi-page PDF, PNG, JPEG, single- or multi-page TIFF; file name template
-  (`{date}`, `{time}`, `{datetime}`, `{profile}`, `{input}`, `{n}`, `{page}`); destination: download, folder, SMB,
+  (`{date}`, `{time}`, `{datetime}`, `{profile}`, `{input}`, `{n}`, `{page}`); destination: download, folder, SFTP,
   FTP/FTPS, Paperless-ngx, Papra or a webhook, each with a **Test** button.
 - All profile settings, the common profiles a new installation starts with, formats and destinations:
   [`docs/PROFILES.md`](docs/PROFILES.md).

@@ -88,7 +88,7 @@ All formats carry the scan resolution, so pages print at their real size.
 
 Dates and times use the container's time zone (`TZ`). Unknown placeholders stay as written. Characters that file
 systems or shares don't accept are removed. PDF and TIFF one-per-page add `_001`, `_002`, … when the template has no
-`{page}`; other duplicate names within one scan get `-2`, `-3`, …. Folder, SMB and FTP destinations never overwrite:
+`{page}`; other duplicate names within one scan get `-2`, `-3`, …. Folder, SFTP and FTP destinations never overwrite:
 a name that already exists there also gets `-2`, `-3`, ….
 
 ### Destinations
@@ -100,8 +100,27 @@ encrypted with `APP_SECRET` and never shown again in full.
 |---|---|---|
 | Download | none | The browser downloads the file. Files stay available in History. |
 | Folder | path | A path inside the container. Mount the target as a volume; the folder must already exist and is never created, so a missing mount can't swallow scans. |
-| SMB | server, share, path, user name, password, domain | Windows / Samba shares, via `smbclient`. |
+| SFTP (SSH) | host, port (22), folder (empty: the login folder), user name, password and/or private key, passphrase | Uploads to a folder on any machine with an SSH server (Linux, macOS, most NAS). See [SFTP](#sftp) below. |
 | FTP | host, port (21), path (`/`), user name (`anonymous`), password, FTPS on/off | |
 | Paperless-ngx | URL, API token, tags (ids), correspondent (id) | Uploads to Paperless's document API. The title is the file name. |
 | Papra | URL, API key, organisation id | |
 | Webhook | URL, optional header name and value | `POST` as `multipart/form-data`: one `file` field per file, plus a `meta` field with JSON `{ scanId, title, files }`. The test sends `meta` `{ "test": true }` and no files. |
+
+#### SFTP
+
+- **Login**: a password, or a private key (paste the whole key file, `-----BEGIN OPENSSH PRIVATE KEY-----` …
+  `-----END …-----`; the matching public key goes in `~/.ssh/authorized_keys` on the server) with its passphrase if
+  it has one. A key that can't be read, or that needs a passphrase that's missing or wrong, is refused when saving.
+- **Folder**: relative to the login folder, or absolute (`/srv/scans`). It must already exist. **Test** checks that
+  it exists and that the user can write there, by creating and removing an empty `.centre-test-…` file.
+- **Host key (trust on first use)**: the first successful Test, or the first delivery if the profile was never
+  tested, stores the server's host key fingerprint (`SHA256:…`, as `ssh-keygen -lf` shows it) in the profile; the
+  form shows it under *Host key*. From then on a server that shows another key is refused before logging in, with
+  *Host key of … changed (expected …, got …)*. If the key really changed (server reinstalled, new host keys), press
+  *Forget host key* and save; the next Test trusts the new key. Changing the host or port forgets it as well. Check
+  the fingerprint against the server (`ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub`) if you want to be sure.
+- Files that already exist are never overwritten (see the numbering above).
+
+SMB shares are no longer supported (the image no longer contains `smbclient`). An output profile that still uses SMB
+shows *SMB share (no longer supported)*; its deliveries and tests fail until you switch it to another destination,
+for example SFTP to the same NAS or a Folder destination on a mounted share.
