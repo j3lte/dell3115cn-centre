@@ -1,8 +1,9 @@
 import type { Database } from "bun:sqlite";
 
-/** `ready`: an assistant (MCP) scan that has been scanned and not delivered; it never sits in the review tray. */
+/** `ready`: an assistant (MCP) or analyse scan that has been scanned and not delivered; it never sits in the review tray. */
 export type ScanStatus = "scanning" | "review" | "ready" | "delivering" | "done" | "failed" | "cancelled";
-export type ScanOrigin = "ui" | "button" | "mcp";
+/** analyse: a temporary scan made for an analysis (Analyse → Tracking dots), deleted when it ends. */
+export type ScanOrigin = "ui" | "button" | "mcp" | "analyse";
 export type DeliveryStatus = "sending" | "sent" | "failed";
 
 /** The scan, page and delivery tables. SQL only; rules live in `ScanService`. */
@@ -58,7 +59,7 @@ export class ScanRepo {
     this.db.transaction(() => {
       this.db
         .query(
-          "UPDATE scans SET status = CASE origin WHEN 'mcp' THEN 'ready' ELSE 'review' END, review = 1, problem = coalesce(problem || '; ', '') || 'Scan interrupted by a restart' WHERE status = 'scanning' AND page_count > 0",
+          "UPDATE scans SET status = CASE WHEN origin IN ('mcp', 'analyse') THEN 'ready' ELSE 'review' END, review = 1, problem = coalesce(problem || '; ', '') || 'Scan interrupted by a restart' WHERE status = 'scanning' AND page_count > 0",
         )
         .run();
       this.db.query("UPDATE scans SET status = 'failed', error = 'Interrupted by a restart' WHERE status = 'scanning'").run();

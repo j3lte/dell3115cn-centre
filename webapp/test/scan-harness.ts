@@ -1,6 +1,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { PDFDict, PDFDocument, PDFName, PDFNumber, PDFRawStream } from "pdf-lib";
+import type { AnalyseClient } from "../src/server/analyse-client";
 import { openDb } from "../src/server/db";
 import { LiveHub, type LiveMessage } from "../src/server/live";
 import type { InputProfileDraft } from "../src/server/profiles";
@@ -15,7 +16,7 @@ import { tmpdir } from "./helpers";
 
 export type Harness = Awaited<ReturnType<typeof makeHarness>>;
 
-export async function makeHarness(opts: { clock?: () => number; client?: ScannerClientOptions; onMcpChange?: () => void; printer?: PrinterSource } = {}) {
+export async function makeHarness(opts: { clock?: () => number; client?: ScannerClientOptions; onMcpChange?: () => void; printer?: PrinterSource; analyse?: AnalyseClient } = {}) {
   const fake = new FakeScannerService().start();
   const dataDir = tmpdir();
   const outDir = tmpdir();
@@ -34,6 +35,7 @@ export async function makeHarness(opts: { clock?: () => number; client?: Scanner
     hub,
     dataDir,
     printer: opts.printer,
+    analyse: opts.analyse,
     onMcpChange: opts.onMcpChange,
     clock: opts.clock,
   });

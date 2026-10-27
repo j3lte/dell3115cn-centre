@@ -50,6 +50,9 @@ const services = createServices({
   onMcpChange: () => downloads.clear(),
 });
 const { settings, scans } = services;
+// Analyses cut short by a restart fail, and their temporary scans go.
+const interrupted = services.deda?.recover() ?? 0;
+if (interrupted) console.log(`analyse: ${interrupted} tracking-dot analysis(es) interrupted by the restart`);
 
 hub.setSnapshot(() => [{ type: "status", status: client.status }, ...scans.liveScans().map((scan) => ({ type: "scan" as const, scan }))]);
 client.onStatus((status) => hub.broadcast({ type: "status", status }));

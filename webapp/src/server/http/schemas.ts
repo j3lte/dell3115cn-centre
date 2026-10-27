@@ -171,7 +171,7 @@ export const ScanViewSchema = exact<ScanView>()(
       inputProfile: InputProfileSchema,
       outputProfileId: z.number().nullable(),
       outputProfileName: z.string().optional(),
-      origin: z.enum(["ui", "button", "mcp"]),
+      origin: z.enum(["ui", "button", "mcp", "analyse"]),
       temporary: z.boolean(),
       expiresAt: z.number().optional(),
       area: z.tuple([z.number(), z.number(), z.number(), z.number()]).optional(),

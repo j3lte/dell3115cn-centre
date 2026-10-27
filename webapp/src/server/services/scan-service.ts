@@ -293,6 +293,12 @@ export class ScanService {
     return rows.map((r) => this.view(r));
   }
 
+  /** The stored lossless PNG of a page (temporary scans too), with the dpi and mode it was scanned at. */
+  pagePath(id: string, n: number): { path: string; dpi: number; mode: PageRow["mode"] } | null {
+    const p = this.repo.page(id, n);
+    return p ? { path: this.abs(p.path), dpi: p.dpi, mode: p.mode } : null;
+  }
+
   thumbPath(id: string, n: number): string | null {
     const p = this.repo.page(id, n);
     if (!p) return null;
@@ -412,13 +418,14 @@ export class ScanService {
 
   /**
    * An assistant (MCP) scan with its own settings: no output profile, never delivered unless sent, and temporary
-   * (deleted after the shelf life, see `touch`) unless `store`.
+   * (deleted after the shelf life, see `touch`) unless `store`. `origin` "analyse": a scan the DEDA service makes and
+   * deletes itself.
    */
-  async startAdhoc(input: InputProfile, opts: { areaMm?: AreaMm; store: boolean }): Promise<ScanView> {
+  async startAdhoc(input: InputProfile, opts: { areaMm?: AreaMm; store: boolean; origin?: "mcp" | "analyse" }): Promise<ScanView> {
     validateInput(input);
     const area = this.checkArea(input, opts.areaMm ?? null);
     const expiresAt = opts.store ? null : this.clock() + this.shelfLifeMinutes() * MINUTE_MS;
-    return this.begin(input, { outputId: null, review: true, area, origin: "mcp", expiresAt });
+    return this.begin(input, { outputId: null, review: true, area, origin: opts.origin ?? "mcp", expiresAt });
   }
 
   private checkArea(input: InputProfile, area: AreaMm | null): AreaMm | null {
@@ -593,7 +600,7 @@ export class ScanService {
     else if (total === 0) {
       status = "failed";
       error = error ?? "No pages were scanned";
-    } else if (r.review || cancelled) status = r.origin === "mcp" ? "ready" : "review";
+    } else if (r.review || cancelled) status = r.origin === "mcp" || r.origin === "analyse" ? "ready" : "review";
     else status = "delivering";
     this.update(id, { status, problem, error, page_count: total });
     this.broadcast(id);

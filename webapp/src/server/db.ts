@@ -43,6 +43,19 @@ const MIGRATIONS: string[] = [
   CREATE INDEX scans_created ON scans (created_at);
   CREATE INDEX deliveries_scan ON deliveries (scan_id);
   `,
+  `
+  CREATE TABLE deda_analyses (
+    id TEXT PRIMARY KEY, name TEXT NOT NULL,
+    -- status: scanning, analysing, done or failed; source: scan (a scan made for it) or history (a stored page)
+    status TEXT NOT NULL, source TEXT NOT NULL,
+    -- scan_id: no FK, the entry outlives the scan (for source scan it is the temporary scan's id)
+    scan_id TEXT, page INTEGER, dpi INTEGER, scanned_at INTEGER NOT NULL, analysed_at INTEGER,
+    found INTEGER, dots INTEGER, grid_score REAL,
+    -- decode: JSON; images: JSON list of image names (files in DATA_DIR/deda/<id>/<name>.png)
+    decode TEXT, decode_error TEXT, error TEXT, images TEXT NOT NULL DEFAULT '[]'
+  );
+  CREATE INDEX deda_scanned ON deda_analyses (scanned_at);
+  `,
 ];
 
 export function openDb(path: string): Database {
