@@ -1,6 +1,7 @@
 /**
  * Just enough IPP (RFC 8010) to ask CUPS for printer attributes: encode a Get-Printer-Attributes request, decode
- * the response. Integers, enums and booleans become numbers/booleans, text-like values strings, anything else bytes.
+ * the response. Integers, enums and booleans become numbers/booleans, dateTimes milliseconds since the epoch,
+ * text-like values strings, anything else bytes.
  */
 
 export type IppValue = number | boolean | string | Uint8Array;
@@ -18,6 +19,7 @@ const TAG = {
   integer: 0x21,
   boolean: 0x22,
   enum: 0x23,
+  dateTime: 0x31,
   name: 0x42,
   keyword: 0x44,
   uri: 0x45,
@@ -105,6 +107,7 @@ export function parseIpp(data: Uint8Array): IppMessage {
     const value: IppValue =
       (tag === TAG.integer || tag === TAG.enum) && len === 4 ? view.getInt32(at - 4)
       : tag === TAG.boolean && len === 1 ? raw[0] !== 0
+      : tag === TAG.dateTime && len === 11 ? dateTime(raw)
       : STRING_TAGS.has(tag) ? text.decode(raw)
       : raw.slice();
     if (name) attrs[name] = last = [value];
@@ -120,6 +123,13 @@ export function printerAttributes(msg: IppMessage): IppAttributes {
 /** All job-group attributes of a response. */
 export function jobAttributes(msg: IppMessage): IppAttributes {
   return Object.assign({}, ...msg.groups.filter((g) => g.tag === JOB_GROUP).map((g) => g.attributes));
+}
+
+/** RFC 2579 DateAndTime (year, month, day, hour, minute, second, deci-second, '+'/'-', UTC offset h, m) → ms. */
+function dateTime(b: Uint8Array): number {
+  const local = Date.UTC((b[0]! << 8) | b[1]!, b[2]! - 1, b[3]!, b[4]!, b[5]!, b[6]!, b[7]! * 100);
+  const offset = (b[9]! * 60 + b[10]!) * 60_000;
+  return b[8] === 0x2d ? local + offset : local - offset; // 0x2d '-': behind UTC
 }
 
 function u32(n: number): number[] {

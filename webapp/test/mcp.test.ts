@@ -107,11 +107,15 @@ test("scanner_status reports the scanner and the feeder", async () => {
   });
 });
 
-test("scanner_status with wake: true wakes the printer for a fresh report", async () => {
+test("refresh_scanner_status wakes the printer for a fresh report; it is not read-only, scanner_status is", async () => {
   const { connect } = await setup();
   const c = await connect();
-  const r = body(await c.callTool({ name: "scanner_status", arguments: { wake: true } }));
+  const r = body(await c.callTool({ name: "refresh_scanner_status", arguments: {} }));
+  expect(r).toMatchObject({ service: "connected" });
   expect(r.printerReport).toMatchObject({ pageCount: 66099, readAt: "2026-10-27T11:00:00.000Z" });
+  const tools = new Map((await c.listTools()).tools.map((t) => [t.name, t.annotations]));
+  expect(tools.get("scanner_status")?.readOnlyHint).toBe(true);
+  expect(tools.get("refresh_scanner_status")?.readOnlyHint).toBeUndefined();
 });
 
 // ---------------------------------------------------------------- scanning tools

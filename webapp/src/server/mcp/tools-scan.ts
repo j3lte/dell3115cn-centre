@@ -6,6 +6,7 @@ import { z } from "zod";
 import { DEFAULT_FILTER, type Filter } from "../pipeline/filters";
 import { GLASS_MM, LLM_MAX_PX } from "../pipeline/region";
 import { DPIS, FORMATS, ValidationError, type InputProfile } from "../profiles";
+import type { PrinterView } from "../printer";
 import { NotFound } from "../services/errors";
 import { adhocProfile, type AreaMm, type ScanView } from "../services/scan-service";
 import { jsonResult, run, type McpContext, type McpDeps } from "./common";
@@ -61,29 +62,36 @@ export function registerScanTools(server: McpServer, deps: McpDeps, ctx: McpCont
     return result;
   }
 
+  /** The scanner's state and the printer's report: as last read, or (refresh_scanner_status) read again first. */
+  const status = async (printer: PrinterView) => {
+    const printerReport = {
+      alerts: printer.alerts,
+      severity: printer.severity,
+      pageCount: printer.pageCount,
+      supplies: printer.supplies,
+      readAt: printer.readAt === null ? null : new Date(printer.readAt).toISOString(),
+      ...(printer.error ? { error: printer.error } : {}),
+    };
+    return jsonResult({ ...scanner.status, printerReport });
+  };
+
   server.registerTool(
     "scanner_status",
     {
       description:
-        "State of the scanner: whether the scanner service is connected, the printer's state and whether paper is in the document feeder; and `printerReport`: alerts the printer reported when it was last read (covers, trays, error codes like 077-300, low supplies; severity error = printing blocked), the toner, belt unit and fuser levels (percent; null = unknown), the lifetime page count and `readAt`, when the printer was last read (after its last print job or wake-up). A sleeping printer doesn't notice changes; `wake: true` wakes it first (warm-up noise, nothing is printed, takes up to a minute) for a fresh report.",
-      inputSchema: {
-        wake: z.boolean().optional().describe("Wake the printer and read it again first (default false: report what was last read)"),
-      },
+        "State of the scanner: whether the scanner service is connected, the printer's state and whether paper is in the document feeder; and `printerReport`: alerts the printer reported when it was last read (covers, trays, error codes like 077-300, low supplies; severity error = printing blocked), the toner, belt unit and fuser levels (percent; null = unknown), the lifetime page count and `readAt`, when the printer was last read (after its last print job or wake-up). A sleeping printer doesn't notice changes; refresh_scanner_status wakes it for a fresh report.",
       annotations: { readOnlyHint: true },
     },
-    (a) =>
-      run(async () => {
-        const p = await (a.wake ? deps.services.printer.refresh() : deps.services.printer.get());
-        const printerReport = {
-          alerts: p.alerts,
-          severity: p.severity,
-          pageCount: p.pageCount,
-          supplies: p.supplies,
-          readAt: p.readAt === null ? null : new Date(p.readAt).toISOString(),
-          ...(p.error ? { error: p.error } : {}),
-        };
-        return jsonResult({ ...scanner.status, printerReport });
-      }),
+    () => run(async () => status(await deps.services.printer.get())),
+  );
+
+  server.registerTool(
+    "refresh_scanner_status",
+    {
+      description:
+        "The same as scanner_status, but wakes the printer first and reads it again, so `printerReport` is current (an opened cover, refilled paper). Waking makes warm-up noise and takes up to a minute; nothing is printed. Use it when the user asks for the printer's current state, not for routine checks.",
+    },
+    () => run(async () => status(await deps.services.printer.refresh())),
   );
 
   server.registerTool(

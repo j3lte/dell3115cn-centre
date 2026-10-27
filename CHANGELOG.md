@@ -6,8 +6,9 @@ Notable changes per release. Releases are tagged `x.y.z`; each heading links to 
 
 - The printer no longer wakes up every 6 hours to report its state (warm-up noise, beeps). The web app wakes it when
   it is opened and the last check is older than the hours set in Settings → *Printer wake-up* (24 by default, or
-  off); the Printer tab shows when the printer was last read. Assistants can ask `scanner_status` for a fresh report with
-  `wake: true`. On an existing print server, disable the timer: `sudo systemctl disable --now dell3115cn-supplies.timer`.
+  off); the Printer tab shows when the printer was last read. Assistants get a fresh report from the new MCP tool
+  `refresh_scanner_status`. On an existing print server, disable the timer:
+  `sudo systemctl disable --now dell3115cn-supplies.timer`.
 
 ## [1.0.0](https://github.com/j3lte/dell3115cn-centre/commits/1.0.0)
 
