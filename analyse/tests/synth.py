@@ -13,6 +13,9 @@ DOT_RADIUS_MM = 0.05
 DOT_TINT = (1.0, 1.0, 0.82)  # dots drop blue by ~18 %
 NOISE_SIGMA = 0.012
 RED_INK = (0.80, 0.12, 0.25)
+# Red as a real scan of this printer's test page shows it: solid, blue a little below green, so "blue is the lowest
+# channel" alone does not tell it from yellow.
+RED_INK_SCANNED = (0.62, 0.25, 0.22)
 RED_LINE_MM = 2.0
 # Outer edges of each red box: top, left, bottom, right, in mm.
 RED_BOXES_MM = [(160, 20, 200, 100), (160, 110, 200, 190), (210, 20, 280, 190)]
@@ -55,7 +58,7 @@ def red_box_mask(dpi: int) -> np.ndarray:
 
 
 def page(dpi: int = 600, dots: np.ndarray | None = None, paper=(0.86, 0.96, 0.95), text: bool = True,
-         red_boxes: bool = False, seed: int = 0) -> np.ndarray:
+         red_boxes: bool = False, red_scanned: bool = False, seed: int = 0) -> np.ndarray:
     """A generated scan of an A4 page (uint8 H x W x 3, RGB)."""
     rng = np.random.default_rng(seed)
     h, w = page_shape(dpi)
@@ -83,7 +86,8 @@ def page(dpi: int = 600, dots: np.ndarray | None = None, paper=(0.86, 0.96, 0.95
     if red_boxes:
         # Red is printed as solid magenta (drops green) plus a halftoned yellow layer (drops blue). The yellow layer
         # is shifted by 2 px (misregistration), so its halftone dots stick out as a yellow fringe on one side of
-        # every line. Everything is blurred by 1 px.
+        # every line. Everything is blurred by 1 px. red_scanned: the red as a real scan shows it (RED_INK_SCANNED),
+        # blue drops under the whole line, not only under the halftone.
         sharp = red_box_mask(dpi)
         shift = max(1, round(2 * dpi / 600))
         cell = max(2, round(4 * dpi / 600))  # halftone period
@@ -94,9 +98,11 @@ def page(dpi: int = 600, dots: np.ndarray | None = None, paper=(0.86, 0.96, 0.95
         yellow &= screen
         magenta = cv2.GaussianBlur(sharp.astype(np.float32), (0, 0), 1)
         yellow = cv2.GaussianBlur(yellow.astype(np.float32), (0, 0), 1)
-        for c, m in enumerate((magenta, magenta, yellow)):
-            img[..., c] += m * (RED_INK[c] - paper[c])
-        del sharp, screen, magenta, yellow
+        red_ink = RED_INK_SCANNED if red_scanned else RED_INK
+        blue = np.maximum(magenta, yellow) if red_scanned else yellow
+        for c, m in enumerate((magenta, magenta, blue)):
+            img[..., c] += m * (red_ink[c] - paper[c])
+        del sharp, screen, magenta, yellow, blue
 
     for y0 in range(0, h, 1024):  # noise in bands, to keep memory down
         band = img[y0:y0 + 1024]

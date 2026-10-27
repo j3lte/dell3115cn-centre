@@ -24,12 +24,36 @@ def test_negative_bluish_letter():
     assert det.found is False
 
 
-def test_red_box_fringes_ignored():
-    det = detect(synth.page(dots=None, red_boxes=True), 600)
+@pytest.mark.parametrize("red_scanned", [False, True])
+def test_red_box_fringes_ignored(red_scanned):
+    det = detect(synth.page(dots=None, red_boxes=True, red_scanned=red_scanned), 600)
     assert det.found is False
     near_edge = cv2.dilate(synth.red_box_mask(600).astype(np.uint8), np.ones((9, 9), np.uint8))  # 4 px around
     ys, xs = np.rint(det.dots).astype(int).T
     assert not near_edge[ys, xs].any()
+
+
+def _random_specks(dpi: int, top: float, n: int, seed: int = 1) -> np.ndarray:
+    """n dot-sized specks at random (not on a grid) below row top * page height."""
+    h, w = synth.page_shape(dpi)
+    rng = np.random.default_rng(seed)
+    return np.stack([rng.uniform(top * h, h - 2, n), rng.uniform(0, w - 2, n)], axis=1).astype(np.float32)
+
+
+def test_grid_on_part_of_the_page_found():
+    # A real page: ink and coloured areas hide the grid on most of it, and stray yellow specks land everywhere.
+    # A grid on 40 % of the page is enough.
+    h = synth.page_shape(600)[0]
+    grid = synth.tdm_dots(600)
+    grid = grid[grid[:, 0] < 0.4 * h]
+    det = detect(synth.page(dots=np.concatenate([grid, _random_specks(600, 0.4, 6000)]), text=False), 600)
+    assert det.found is True
+    assert det.grid_score > 3
+
+
+def test_random_specks_not_found():
+    det = detect(synth.page(dots=_random_specks(600, 0, 10000), text=False), 600)
+    assert det.found is False
 
 
 def test_300_dpi():

@@ -12,13 +12,16 @@ import numpy as np
 
 PAPER_MIN = 0.70  # pixels brighter than this in every channel are paper
 INK_MIN = 0.47  # pixels with a channel at or below this are ink: never dots
-COLOUR_SPREAD = 0.25  # max - min above this: coloured ink, unless yellowish
+COLOUR_SPREAD = 0.25  # max - min above this: coloured ink, unless yellowish (hue 30..90 deg: |R - G| < min(R,G) - B)
 COLOUR_DILATE = 4  # px at 600 dpi around coloured ink where dots are ignored
 THRESHOLD_FACTOR = 0.7  # of the 99.9th percentile of the yellowness map
 THRESHOLD_MIN = 0.04
 DOT_AREA = (2, 40)  # px at 600 dpi
 PERIOD = 24  # px at 600 dpi: the 0.04 in dot grid
 TILE_PERIODS = 20  # tile side for the grid score, in periods (480 px at 600 dpi)
+# The grid score is this percentile of the tile scores, not their median: on a real page ink and coloured areas
+# hide the grid in many tiles (half of them on a colour test page), and stray yellow specks put dots in every tile.
+GRID_PERCENTILE = 75
 GRID_SCORE_MIN = 3.0
 DOTS_MIN = 50
 BAND = 256  # rows per band for per-pixel work
@@ -65,7 +68,7 @@ def _percentile(a: np.ndarray, q: float) -> float:
 
 
 def _grid_score(yellow: np.ndarray, dots: np.ndarray, period: int) -> float:
-    """Median, over tiles with dots, of peak / median of the yellowness folded modulo the dot period."""
+    """GRID_PERCENTILE, over tiles with dots, of peak / median of the yellowness folded modulo the dot period."""
     tile = TILE_PERIODS * period
     h, w = yellow.shape
     has_dots = np.zeros((h // tile, w // tile), bool)
@@ -77,7 +80,7 @@ def _grid_score(yellow: np.ndarray, dots: np.ndarray, period: int) -> float:
         t = yellow[y * tile:(y + 1) * tile, x * tile:(x + 1) * tile]
         fold = t.reshape(TILE_PERIODS, period, TILE_PERIODS, period).sum(axis=(0, 2))
         scores.append(fold.max() / max(float(np.median(fold)), 1e-6))
-    return float(np.median(scores)) if scores else 0.0
+    return float(np.percentile(scores, GRID_PERCENTILE)) if scores else 0.0
 
 
 def detect(rgb: np.ndarray, dpi: int) -> Detection:
@@ -97,8 +100,11 @@ def detect(rgb: np.ndarray, dpi: int) -> Detection:
         rg = np.minimum(n[..., 0], n[..., 1])
         b = n[..., 2]
         spread = n.max(axis=2) - n.min(axis=2)
-        colour[y0:y0 + BAND] = (spread > COLOUR_SPREAD) & ~(b < rg)
-        yb = np.clip(rg - b, 0, 1)
+        yb = rg - b
+        # Red on a scan has blue a little below green: "blue lowest" alone would call it yellowish.
+        yellowish = np.abs(n[..., 0] - n[..., 1]) < yb
+        colour[y0:y0 + BAND] = (spread > COLOUR_SPREAD) & ~yellowish
+        np.clip(yb, 0, 1, out=yb)
         yb[ink] = 0
         yellow[y0:y0 + BAND] = yb
 
