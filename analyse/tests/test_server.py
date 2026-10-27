@@ -218,7 +218,7 @@ def test_report_plain_without_accept_encoding(base, monkeypatch):
     assert json.loads(raw) == big
 
 
-@pytest.mark.parametrize("accept", ["gzip;q=0", "br, deflate", "identity"])
+@pytest.mark.parametrize("accept", ["gzip;q=0", "br, deflate", "identity", "*"])
 def test_report_plain_when_gzip_refused(base, monkeypatch, accept):
     monkeypatch.setattr(report, "analyse", lambda data, dpi: {"pad": "A" * 5000})
     _, headers, raw = _raw(base, "/deda/", b"x", {"Accept-Encoding": accept})
@@ -275,10 +275,12 @@ def test_gzip_bomb_rejected(base, monkeypatch):
             return getattr(self._o, n)
 
     monkeypatch.setattr(server_mod.zlib, "decompressobj", lambda *a, **k: Obj(*a, **k))
-    bomb = gzip.compress(bytes(2 * 1024 * 1024))
-    assert len(bomb) < 10_000
+    bomb = gzip.compress(bytes(16 * 1024 * 1024))
+    assert len(bomb) < 100_000
     status, _, body = call(base + "/deda/", "POST", bomb, {"Content-Encoding": "gzip"})
     assert (status, body) == (413, {"error": "too_large"})
+    assert len(sizes) >= 2
+    assert max(sizes) <= server_mod.CHUNK  # every step is bounded
     assert sum(sizes) <= 1024 * 1024 + server_mod.CHUNK  # never decompressed far past the limit
 
 
@@ -291,3 +293,27 @@ def test_corrupt_gzip_body(base):
 def test_unknown_content_encoding(base):
     status, _, body = call(base + "/deda/", "POST", b"x", {"Content-Encoding": "br"})
     assert (status, body) == (415, {"error": "unsupported_encoding"})
+
+
+def test_accept_encoding_case_insensitive(base, monkeypatch):
+    monkeypatch.setattr(report, "analyse", lambda data, dpi: {"pad": "A" * 5000})
+    _, headers, raw = _raw(base, "/deda/", b"x", {"Accept-Encoding": "GZIP"})
+    assert headers["Content-Encoding"] == "gzip"
+    assert json.loads(gzip.decompress(raw))["pad"] == "A" * 5000
+
+
+def _member_of_size(size: int) -> bytes:
+    """A gzip member (stored blocks, so size is predictable) of exactly `size` bytes."""
+    n = size - 18
+    while len(m := gzip.compress(bytes(n), 0)) != size:
+        n -= len(m) - size
+    return m
+
+
+@pytest.mark.parametrize("head,tail", [(gzip.compress(b"x" * 1000), b"junk"),
+                                       (_member_of_size(65536), b"junk"),  # garbage starts in the 2nd slice
+                                       (_member_of_size(65536), bytes(200_000))])
+def test_trailing_data_after_gzip_rejected(base, monkeypatch, head, tail):
+    monkeypatch.setattr(report, "analyse", lambda data, dpi: pytest.fail("analyse must not run"))
+    status, _, out = call(base + "/deda/", "POST", head + tail, {"Content-Encoding": "gzip"})
+    assert (status, out) == (400, {"error": "invalid", "message": "bad gzip body"})

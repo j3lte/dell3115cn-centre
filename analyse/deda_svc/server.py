@@ -80,6 +80,8 @@ def _gunzip(data: bytes, limit: int) -> bytearray:
                     raise _TooLarge
                 pending = d.unconsumed_tail
             if d.eof:
+                if i + 65536 < len(view):
+                    raise _Invalid("bad gzip body")  # more input after the gzip member
                 break
         if not d.eof or d.unused_data:
             raise _Invalid("bad gzip body")
