@@ -2,6 +2,7 @@ import { DedaActions } from "../components/analyse/DedaActions";
 import { DedaList } from "../components/analyse/DedaList";
 import { ErrorMessage } from "../components/form/ErrorMessage";
 import { Spinner } from "../components/ui/Spinner";
+import { dedaGlassBusy } from "../helpers/deda";
 import { useDedaAnalyses } from "../hooks/useDedaAnalyses";
 import { errorText } from "../lib/errors";
 
@@ -11,7 +12,7 @@ export function DedaPage() {
   return (
     <div className="flex flex-col gap-4">
       <h1 className="text-xl font-bold">Tracking dots (DEDA)</h1>
-      <DedaActions />
+      <DedaActions glassBusy={dedaGlassBusy(data)} />
       {error && <ErrorMessage>{errorText(error)}</ErrorMessage>}
       {data ? <DedaList analyses={data} /> : !error && <Spinner />}
     </div>

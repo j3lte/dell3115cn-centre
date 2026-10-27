@@ -6,6 +6,9 @@ export const DEDA_POLL_MS = 2000;
 /** Whether an analysis is still under way (its scan or the analysis itself). */
 export const dedaPending = (a: DedaView) => a.status === "scanning" || a.status === "analysing";
 
+/** Whether a page is being scanned on the glass: the scanner is busy, so another glass scan can't start. */
+export const dedaGlassBusy = (analyses: readonly DedaView[] | undefined) => !!analyses?.some((a) => a.source === "scan" && a.status === "scanning");
+
 /** The list's refetch interval: `DEDA_POLL_MS` while any entry is pending, else no polling. */
 export const dedaPoll = (analyses: readonly DedaView[] | undefined): number | false => (analyses?.some(dedaPending) ? DEDA_POLL_MS : false);
 

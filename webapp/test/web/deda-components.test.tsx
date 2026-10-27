@@ -115,6 +115,21 @@ describe("DedaPage", () => {
     expect(screen.queryByText("No analyses yet.")).toBeNull();
   });
 
+  test("Scan page from glass stays disabled while a glass scan is under way", async () => {
+    fakeApi([dedaOf({ id: "d5", status: "scanning", source: "scan", scanId: null, page: null, dpi: null, found: null, decode: null, images: [] })]);
+    renderWithQuery(<DedaPage />);
+    await screen.findByText("Scanning…");
+    expect((screen.getByRole("button", { name: "Scan page from glass" }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole("button", { name: "Pick from History" }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  test("Scan page from glass is on when only History analyses run", async () => {
+    fakeApi([dedaOf({ id: "d6", status: "analysing", found: null, decode: null, images: [] })]);
+    renderWithQuery(<DedaPage />);
+    await screen.findByText("Analysing…");
+    expect((screen.getByRole("button", { name: "Scan page from glass" }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
   test("the History picker lists the candidates, warns on a low-dpi page and posts the chosen page", async () => {
     const { calls } = fakeApi();
     renderWithQuery(<DedaPage />);

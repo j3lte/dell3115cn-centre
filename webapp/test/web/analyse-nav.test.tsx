@@ -68,8 +68,12 @@ describe("useFeatures", () => {
   });
 });
 
+/** The Tracking dots page fetches its list; answer it so no test makes a real request. */
+const stubDeda = () => stubFetch(() => Response.json({ analyses: [] }));
+
 describe("AnalysePage", () => {
   test("#/analyse opens Tracking dots (DEDA)", async () => {
+    stubDeda();
     location.hash = "#/analyse";
     renderWithQuery(<AnalysePage />);
     await waitFor(() => expect(location.hash).toBe("#/analyse/deda"));
@@ -92,6 +96,7 @@ describe("redirects", () => {
   });
 
   test("an unknown tool opens Tracking dots through replace, not a new entry", async () => {
+    stubDeda();
     location.hash = "#/analyse/x";
     const spy = spyOn(location, "replace");
     renderWithQuery(<AnalysePage />);
@@ -104,7 +109,8 @@ describe("redirects", () => {
     location.hash = "#/analyse/deda";
     const spy = spyOn(location, "replace");
     let answer!: (r: Response) => void;
-    stubFetch(() => new Promise<Response>((r) => (answer = r)));
+    const features = new Promise<Response>((r) => (answer = r));
+    stubFetch((req) => (new URL(req.url).pathname.startsWith("/api/analyse/deda") ? Response.json({ analyses: [] }) : features));
     function Shell() {
       const routes = visibleRoutes(useFeatures());
       return useRoute(routes) === "analyse" ? <AnalysePage /> : <p>Scan</p>;
