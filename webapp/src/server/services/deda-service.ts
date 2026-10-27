@@ -28,6 +28,8 @@ export type DedaView = {
   images: string[];
 };
 
+export type DedaCandidate = { id: string; createdAt: number; pages: { n: number; dpi: number; mode: string; lowDpi: boolean }[] };
+
 /** Scans made for an analysis: flatbed, colour, 600 dpi, 8-bit, no auto-orient, no filter. */
 const DEDA_INPUT = {
   ...adhocProfile({ source: "flatbed", mode: "color", dpi: 600, depth: 8, autoOrient: false, filter: { ...DEFAULT_FILTER } }),
@@ -36,6 +38,7 @@ const DEDA_INPUT = {
 /** An A4 sheet in the glass corner (the glass is 0.2 mm short of A4's 297 mm). */
 const A4_AREA: AreaMm = [0, 0, 210, GLASS_MM[1]];
 const MIN_DPI = 300;
+const GOOD_DPI = 600;
 const NAME_MAX = 100;
 
 /** An expected way for an analysis to fail; its message is the entry's error as is. */
@@ -82,6 +85,14 @@ export class DedaService {
   get(id: string): DedaView | null {
     const r = this.repo.get(id);
     return r ? view(r) : null;
+  }
+
+  /** Stored scans with a colour page to analyse (300 dpi or more), newest first; `lowDpi` pages are under 600 dpi. */
+  candidates(limit = 50): DedaCandidate[] {
+    return this.scans.colourPageGroups(MIN_DPI, limit).map((g) => ({
+      ...g,
+      pages: g.pages.map((p) => ({ ...p, lowDpi: p.dpi < GOOD_DPI })),
+    }));
   }
 
   /** An image of an entry, looked up by name in its record (never a path from the request). */

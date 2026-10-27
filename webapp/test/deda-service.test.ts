@@ -290,3 +290,45 @@ describe("DEDA service", () => {
     expect(deda.clear()).toBe(0);
   });
 });
+
+describe("DEDA candidates", () => {
+  withoutDeviceIcc();
+
+  test("stored scans with a colour page of 300 dpi or more, newest first, only those pages", async () => {
+    let now = 1000;
+    const deda = await setup(analyser(), () => now++);
+    const low = await storedScan({ dpi: 200 });
+    const gray = await storedScan({ mode: "gray" });
+    const d300 = await storedScan({ dpi: 300 });
+    const d600 = await storedScan({ dpi: 600 });
+    // a temporary scan with a good page is not offered
+    const repo = new ScanRepo(h.db);
+    repo.insertScan(scanInsert("temp", { created_at: 9e12, expires_at: 9e12 + 1 }));
+    repo.insertPage({ scan_id: "temp", n: 1, path: "x", width: 1, height: 1, dpi: 600, mode: "color", rotation: 0 });
+    // a scan with a colour 600 dpi page and a gray page lists only the colour one
+    repo.insertScan(scanInsert("mixed", { created_at: 5 }));
+    repo.insertPage({ scan_id: "mixed", n: 1, path: "x", width: 1, height: 1, dpi: 600, mode: "gray", rotation: 0 });
+    repo.insertPage({ scan_id: "mixed", n: 2, path: "x", width: 1, height: 1, dpi: 600, mode: "color", rotation: 0 });
+
+    const c = deda.candidates();
+    expect(c.map((s) => s.id)).toEqual([d600, d300, "mixed"]);
+    expect(c.map((s) => s.id).filter((id) => id !== "mixed")).toEqual([d600, d300]);
+    expect(c.map((s) => s.id)).not.toContain(low);
+    expect(c.map((s) => s.id)).not.toContain(gray);
+    expect(c.map((s) => s.id)).not.toContain("temp");
+    expect(c.find((s) => s.id === d600)!.pages).toEqual([{ n: 1, dpi: 600, mode: "color", lowDpi: false }]);
+    expect(c.find((s) => s.id === d300)!.pages).toEqual([{ n: 1, dpi: 300, mode: "color", lowDpi: true }]);
+    expect(c.find((s) => s.id === "mixed")!.pages).toEqual([{ n: 2, dpi: 600, mode: "color", lowDpi: false }]);
+  });
+
+  test("limit caps the scans", async () => {
+    const deda = await setup();
+    const repo = new ScanRepo(h.db);
+    for (let i = 0; i < 4; i++) {
+      repo.insertScan(scanInsert(`s${i}`, { created_at: 100 + i }));
+      repo.insertPage({ scan_id: `s${i}`, n: 1, path: "x", width: 1, height: 1, dpi: 600, mode: "color", rotation: 0 });
+    }
+    expect(deda.candidates(2).map((s) => s.id)).toEqual(["s3", "s2"]);
+    expect(deda.candidates()).toHaveLength(4);
+  });
+});

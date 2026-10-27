@@ -101,6 +101,24 @@ export class ScanRepo {
           .all(before, limit);
   }
 
+  /**
+   * Colour pages of at least `minDpi` in the newest `limit` stored scans that have one, scans newest first and pages
+   * in order (for the tracking-dot page picker).
+   */
+  colourPages(minDpi: number, limit: number): (Pick<PageRow, "scan_id" | "n" | "dpi" | "mode"> & { created_at: number })[] {
+    return this.db
+      .query<Pick<PageRow, "scan_id" | "n" | "dpi" | "mode"> & { created_at: number }, [number, number, number]>(
+        `SELECT p.scan_id, p.n, p.dpi, p.mode, s.created_at
+         FROM pages p JOIN scans s ON s.id = p.scan_id
+         WHERE p.mode = 'color' AND p.dpi >= ? AND p.scan_id IN (
+           SELECT s2.id FROM scans s2
+           WHERE s2.expires_at IS NULL AND EXISTS (SELECT 1 FROM pages p2 WHERE p2.scan_id = s2.id AND p2.mode = 'color' AND p2.dpi >= ?)
+           ORDER BY s2.created_at DESC, s2.rowid DESC LIMIT ?)
+         ORDER BY s.created_at DESC, s.rowid DESC, p.n`,
+      )
+      .all(minDpi, minDpi, limit);
+  }
+
   /** Scans in progress, every scan in the review tray, and the most recent scan. */
   live(): ScanRow[] {
     return this.db

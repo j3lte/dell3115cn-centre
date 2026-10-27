@@ -255,6 +255,17 @@ export class ScanService {
     return this.view(r);
   }
 
+  /** Colour pages of at least `minDpi` per stored scan, newest scan first; scans without one are left out. */
+  colourPageGroups(minDpi: number, limit: number): { id: string; createdAt: number; pages: { n: number; dpi: number; mode: string }[] }[] {
+    const out: { id: string; createdAt: number; pages: { n: number; dpi: number; mode: string }[] }[] = [];
+    for (const r of this.repo.colourPages(minDpi, limit)) {
+      let g = out.at(-1);
+      if (!g || g.id !== r.scan_id) out.push((g = { id: r.scan_id, createdAt: r.created_at, pages: [] }));
+      g.pages.push({ n: r.n, dpi: r.dpi, mode: r.mode });
+    }
+    return out;
+  }
+
   /** Like `get` with temporary scans, but a missing scan is a NotFound that explains temporary scans expire. */
   mustGet(id: string): ScanView {
     this.requireScan(id, { includeTemporary: true });

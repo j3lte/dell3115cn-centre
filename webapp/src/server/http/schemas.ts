@@ -4,6 +4,7 @@ import type { PrinterView, Supply } from "../printer";
 import type { WhiteCalibration } from "../pipeline/white";
 import type { InputProfile, InputProfileDraft, OutputProfile, OutputProfileDraft } from "../profiles";
 import type { ScannerStatus } from "../scanner-client";
+import type { DedaCandidate, DedaView } from "../services/deda-service";
 import type { DeliveryView, PageView, ScanView } from "../services/scan-service";
 import type { SettingsView } from "../services/settings-service";
 
@@ -206,4 +207,37 @@ export const SettingsViewSchema = exact<SettingsView>()(
       generatedSecret: z.string().optional(),
     })
     .openapi("SettingsView"),
+);
+
+export const DedaViewSchema = exact<DedaView>()(
+  z
+    .object({
+      id: z.string(),
+      name: z.string(),
+      status: z.enum(["scanning", "analysing", "done", "failed"]),
+      source: z.enum(["scan", "history"]),
+      scanId: z.string().nullable(),
+      page: z.number().nullable(),
+      dpi: z.number().nullable(),
+      scannedAt: z.number(),
+      analysedAt: z.number().nullable(),
+      found: z.boolean().nullable(),
+      dots: z.number().nullable(),
+      gridScore: z.number().nullable(),
+      decode: z.record(z.string(), z.string()).nullable(),
+      decodeError: z.string().nullable(),
+      error: z.string().nullable(),
+      images: z.array(z.string()),
+    })
+    .openapi("DedaView"),
+);
+
+export const DedaCandidateSchema = exact<DedaCandidate>()(
+  z
+    .object({
+      id: z.string(),
+      createdAt: z.number(),
+      pages: z.array(z.object({ n: z.number(), dpi: z.number(), mode: z.string(), lowDpi: z.boolean() })),
+    })
+    .openapi("DedaCandidate"),
 );
