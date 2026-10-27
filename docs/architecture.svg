@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 430" width="900" height="430" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" role="img" aria-labelledby="title desc">
   <title id="title">dell3115cn-centre architecture</title>
-  <desc id="desc">Phones, browsers and AI assistants use the web app (web UI, REST API, MCP server). The web app talks to the scanner service on the Raspberry Pi print server over HTTP and server-sent events; the scanner service drives the scanner over USB interface 0. Print clients use CUPS on the same Pi over IPP; CUPS renders PCL XL and prints over USB interface 1. One USB cable connects the Pi and the Dell 3115cn.</desc>
+  <desc id="desc">Phones, browsers and AI assistants use the web app (web UI, REST API, MCP server). The web app can use the optional analyse service (DEDA tracking-dot analysis) over HTTP. The web app talks to the scanner service on the Raspberry Pi print server over HTTP and server-sent events; the scanner service drives the scanner over USB interface 0. Print clients use CUPS on the same Pi over IPP; CUPS renders PCL XL and prints over USB interface 1. One USB cable connects the Pi and the Dell 3115cn.</desc>
   <style>
     .group { fill: #f6f8fa; stroke: #d0d7de; }
     .box { fill: #ffffff; stroke: #57606a; }
@@ -16,6 +16,7 @@
     .arrow { fill: #57606a; }
     .lbl { fill: #0969da; font-size: 12px; font-weight: 600; }
     .lblbg { fill: #ffffff; }
+    .opt { stroke-dasharray: 5 4; }
     @media (prefers-color-scheme: dark) {
       .group { fill: #161b22; stroke: #30363d; }
       .box { fill: #0d1117; stroke: #8b949e; }
@@ -52,7 +53,7 @@
   <text class="ts" x="34" y="346">AirPrint · IPP · Mopria</text>
 
   <!-- Docker host -->
-  <rect class="group" x="250" y="14" width="220" height="210" rx="14"/>
+  <rect class="group" x="250" y="14" width="220" height="292" rx="14"/>
   <text class="tg" x="266" y="38">Docker host</text>
   <rect class="accent" x="266" y="52" width="188" height="156" rx="10"/>
   <text class="tb" x="280" y="78">webapp</text>
@@ -61,6 +62,10 @@
   <text class="t" x="280" y="146">/files/ (one-time links)</text>
   <text class="ts" x="280" y="172">profiles · filters · PDF/TIFF</text>
   <text class="ts" x="280" y="190">destinations · history</text>
+
+  <rect class="box opt" x="266" y="236" width="188" height="56" rx="10"/>
+  <text class="tb" x="280" y="259">analyse <tspan class="ts" font-weight="400">(optional)</tspan></text>
+  <text class="ts" x="280" y="279">DEDA tracking dots · GPL-3.0</text>
 
   <!-- Raspberry Pi -->
   <rect class="group" x="520" y="14" width="220" height="400" rx="14"/>
@@ -90,6 +95,9 @@
   <text class="tps" x="836" y="342" text-anchor="middle">printer</text>
 
   <!-- Arrows -->
+  <path class="line" d="M360,208 L360,234" marker-end="url(#a)"/>
+  <text class="lbl" x="368" y="225">HTTP</text>
+
   <path class="line" d="M210,75 L264,75" marker-end="url(#a)"/>
   <rect class="lblbg" x="219" y="58" width="36" height="14" rx="3"/>
   <text class="lbl" x="237" y="69" text-anchor="middle">HTTP</text>
