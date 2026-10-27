@@ -161,7 +161,8 @@ export function registerAdminTools(server: McpServer, deps: McpDeps): void {
     {
       description:
         "Create (no id) or update (with id) an output profile: name, format, jpegQuality, filenameTemplate, destination { type, config }. " +
-        "A masked secret value (as returned by get_output_profile) keeps the stored secret.",
+        "A masked secret value (as returned by get_output_profile) keeps the stored secret. " +
+        "SFTP's hostKey is stored by the server on first use; send hostKey: null to forget it (\"\" keeps it).",
       inputSchema: { profile: object },
     },
     (a) =>

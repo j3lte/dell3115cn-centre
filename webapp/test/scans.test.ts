@@ -854,3 +854,39 @@ test("the first SFTP delivery stores the server's host key in the profile (trust
     send.mockRestore();
   }
 });
+
+test("a host key stored by a delivery survives saving a form opened before it; only an explicit forget clears it", async () => {
+  h = await makeHarness();
+  const key = `SHA256:${"k".repeat(43)}`;
+  const send = spyOn(sftp, "send").mockResolvedValue({ ref: "scan.pdf", learned: { hostKey: key } });
+  const test = spyOn(sftp, "test").mockResolvedValue({ hostKey: `SHA256:${"n".repeat(43)}` });
+  try {
+    const p = h.profiles.saveOutput(
+      { name: "Server", format: "pdf_multi", jpegQuality: 80, filenameTemplate: "scan", destination: { type: "sftp", config: { host: "files.example", username: "u", password: "pw" } } },
+      "targets",
+    );
+    const staleForm = { ...p, name: "Server (renamed)" }; // opened before the delivery: hostKey "" or missing
+    const v0 = await h.svc.start(h.input().id, p.id, { review: false });
+    await h.svc.settled(v0.id);
+    expect(h.profiles.getOutput(p.id).destination.config.hostKey).toBe(key);
+
+    h.profiles.saveOutput({ ...staleForm, destination: { type: "sftp", config: { ...staleForm.destination.config, hostKey: "" } } }, "targets");
+    expect(h.profiles.getOutput(p.id).destination.config.hostKey).toBe(key);
+    const { hostKey: _gone, ...noKey } = staleForm.destination.config;
+    h.profiles.saveOutput({ ...staleForm, destination: { type: "sftp", config: noKey } }, "targets");
+    expect(h.profiles.getOutput(p.id).destination.config.hostKey).toBe(key);
+    // A Test from the stale form checks against the stored key instead of trusting again.
+    await h.profiles.testDestination("sftp", { ...staleForm.destination.config, hostKey: "" }, p.id, "targets");
+    expect(test.mock.calls.at(-1)![0]).toMatchObject({ hostKey: key });
+
+    // "Forget host key" sends null: cleared, and the next Test trusts the server's key again.
+    h.profiles.saveOutput({ ...staleForm, destination: { type: "sftp", config: { ...staleForm.destination.config, hostKey: null } } }, "targets");
+    expect(h.profiles.getOutput(p.id).destination.config.hostKey).toBe("");
+    expect(await h.profiles.testOutput(p.id)).toEqual({ hostKey: `SHA256:${"n".repeat(43)}` });
+    expect(test.mock.calls.at(-1)![0]).toMatchObject({ hostKey: "" });
+    expect(h.profiles.getOutput(p.id).destination.config.hostKey).toBe(`SHA256:${"n".repeat(43)}`);
+  } finally {
+    send.mockRestore();
+    test.mockRestore();
+  }
+});

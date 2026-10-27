@@ -171,12 +171,44 @@ describe("sftp host key (trust on first use)", () => {
     expect(service.getOutput(saved.id).destination.type).toBe("sftp");
   });
 
-  test("a cleared host key is saved as empty, so the next Test trusts again", async () => {
+  test("a forgotten host key (null) is saved as empty, so the next Test trusts again", async () => {
     const saved = service.saveOutput(sftpProfile({ hostKey: HOST_KEY }), "targets");
-    const cleared = service.saveOutput({ ...saved, destination: { ...saved.destination, config: { ...saved.destination.config, hostKey: "" } } }, "targets");
+    const cleared = service.saveOutput({ ...saved, destination: { ...saved.destination, config: { ...saved.destination.config, hostKey: null } } }, "targets");
     expect(cleared.destination.config.hostKey).toBe("");
     spyOn(sftp, "test").mockResolvedValue({ hostKey: HOST_KEY });
     await service.testOutput(saved.id);
     expect(service.getOutput(saved.id).destination.config.hostKey).toBe(HOST_KEY);
+  });
+});
+
+describe("sftp host key is server-managed", () => {
+  afterEach(() => mock.restore());
+  const stored = () => service.saveOutput(sftpProfile({ hostKey: HOST_KEY }), "targets");
+  const withKey = (p: ReturnType<typeof stored>, hostKey: unknown, over: Record<string, unknown> = {}) => ({
+    ...p,
+    destination: { type: "sftp" as const, config: { ...p.destination.config, hostKey, ...over } },
+  });
+
+  test("an assistant can forget it with null without re-entering the masked secrets", () => {
+    const p = stored();
+    expect(p.destination.config.password).toBe("••••");
+    service.saveOutput(withKey(p, null), "all");
+    expect(service.getOutput(p.id).destination.config.hostKey).toBe("");
+    expect(service.getOutputForUse(p.id).destination.config.password).toBe("pw");
+  });
+
+  test("an empty value from an assistant keeps it too", () => {
+    const p = stored();
+    service.saveOutput(withKey(p, ""), "all");
+    expect(service.getOutput(p.id).destination.config.hostKey).toBe(HOST_KEY);
+  });
+
+  test("another host or port doesn't inherit it; a pinned key can be set explicitly", () => {
+    const p = stored();
+    service.saveOutput(withKey(p, "", { host: "other.example", password: "pw2" }), "targets");
+    expect(service.getOutput(p.id).destination.config.hostKey).toBe("");
+    const other = `SHA256:${"o".repeat(43)}`;
+    service.saveOutput(withKey(service.getOutput(p.id), other), "targets");
+    expect(service.getOutput(p.id).destination.config.hostKey).toBe(other);
   });
 });

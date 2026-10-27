@@ -149,7 +149,11 @@ describe("forms", () => {
     expect((await put.json()).destination.config).toMatchObject({ hostKey: key, privateKey: MASK, passphrase: MASK });
     await user.click(screen.getByRole("button", { name: "Forget host key" }));
     expect(screen.queryByText(key)).toBeNull();
-    expect(screen.getByText(/Not stored yet/)).toBeTruthy();
+    expect(screen.getByText(/Forgotten when you save/)).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(stub.calls.filter((r) => endpoint(r) === "PUT /api/output-profiles/6")).toHaveLength(2));
+    const forget = stub.calls.filter((r) => endpoint(r) === "PUT /api/output-profiles/6")[1]!;
+    expect((await forget.json()).destination.config.hostKey).toBeNull(); // explicit: "" would keep the stored key
   });
 
   test("an SMB profile from an older version shows as no longer supported and can be switched", async () => {

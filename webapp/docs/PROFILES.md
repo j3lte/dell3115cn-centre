@@ -117,8 +117,9 @@ encrypted with `APP_SECRET` and never shown again in full.
   tested, stores the server's host key fingerprint (`SHA256:…`, as `ssh-keygen -lf` shows it) in the profile; the
   form shows it under *Host key*. From then on a server that shows another key is refused before logging in, with
   *Host key of … changed (expected …, got …)*. If the key really changed (server reinstalled, new host keys), press
-  *Forget host key* and save; the next Test trusts the new key. Changing the host or port forgets it as well. Check
-  the fingerprint against the server (`ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub`) if you want to be sure.
+  *Forget host key* and save; the next Test trusts the new key. Saving the profile otherwise never clears the stored
+  key (not even from a form opened before the key was stored); changing the host or port does. Check the fingerprint
+  against the server (`ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub`) if you want to be sure.
 - Files that already exist are never overwritten (see the numbering above).
 
 SMB shares are no longer supported (the image no longer contains `smbclient`). An output profile that still uses SMB

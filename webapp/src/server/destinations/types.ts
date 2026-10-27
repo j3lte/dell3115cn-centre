@@ -40,6 +40,12 @@ export type DeliveryFile = { name: string; path: string; mime: string };
 /** Config fields a destination learned while connecting (SFTP's trusted host key), for the profile to store. */
 export type Learned = Record<string, string>;
 
+/**
+ * Server-managed config fields (what a destination learns, see `Learned`). Saving keeps the stored value unless the
+ * new one is a non-empty value or `null` (explicitly forgotten); "" or a missing field never clears it.
+ */
+export const LEARNED_FIELDS: Partial<Record<DestinationType, string[]>> = { sftp: ["hostKey"] };
+
 export interface Destination<C> {
   type: DestinationType;
   /** Validates an untrusted config (UI form); throws ValidationError. */
