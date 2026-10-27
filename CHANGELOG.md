@@ -25,10 +25,11 @@ Notable changes per release. Releases are tagged `x.y.z`; each heading links to 
   the host or URL already did), so a saved secret is never sent to another account or service.
 - The web app logs what it does to stdout, so `docker logs` shows it: scans started and finished, edits in the review
   tray, the printer's Scan button, previews, deliveries (with the destination and file count), tracking-dot
-  analyses, profile and settings changes, and the scanner service going up or down. `LOG_LEVEL` (`debug`, `info`,
-  `warn`, `error`; default `info`) sets the detail; `debug` adds every API request. The analyse and scanner services
-  log to stdout in the same format and also read `LOG_LEVEL` (`SCAN3115_LOG` still works). Secrets, document
-  contents and tracking-dot decodes are never logged.
+  analyses (and renaming or deleting them), deletions from History, profile and settings changes, destination
+  tests, SFTP host keys trusted or forgotten, assistant download links, and the scanner service going up or down.
+  `LOG_LEVEL` (`debug`, `info`, `warn`, `error`; default `info`) sets the detail; `debug` adds every API request.
+  The analyse and scanner services log to stdout in the same format and also read `LOG_LEVEL` (`SCAN3115_LOG` still
+  works). Secrets, document contents and tracking-dot decodes are never logged.
 
 ## [1.0.0](https://github.com/j3lte/dell3115cn-centre/commits/1.0.0)
 

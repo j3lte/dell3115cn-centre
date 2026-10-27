@@ -3,6 +3,7 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import sharp from "sharp";
 import { z } from "zod";
+import { logger } from "../log";
 import { DEFAULT_FILTER, type Filter } from "../pipeline/filters";
 import { GLASS_MM, LLM_MAX_PX } from "../pipeline/region";
 import { DPIS, FORMATS, ValidationError, type InputProfile } from "../profiles";
@@ -10,6 +11,8 @@ import type { PrinterView } from "../printer";
 import { NotFound } from "../services/errors";
 import { adhocProfile, type AreaMm, type ScanView } from "../services/scan-service";
 import { jsonResult, run, type McpContext, type McpDeps } from "./common";
+
+const log = logger("mcp");
 
 const rect = z.tuple([z.number(), z.number(), z.number(), z.number()]).describe("[x, y, width, height] in mm");
 const filterSchema = z
@@ -285,6 +288,8 @@ export function registerScanTools(server: McpServer, deps: McpDeps, ctx: McpCont
               ? { page: a.page }
               : { format: (a.format ?? "pdf_multi") as (typeof FORMATS)[number] };
         const files = await scans.exportFiles(a.scan_id, what, join(deps.dataDir, "exports", crypto.randomUUID()));
+        const kind = "format" in what ? what.format : "page" in what ? `page ${what.page}` : `delivery ${what.deliveryId}`;
+        log.info(`download link for scan ${a.scan_id}: ${files.length} file(s), ${kind}`);
         return jsonResult({
           scanId: a.scan_id,
           format: "format" in what ? what.format : "page" in what ? "page_png" : "delivery_file",

@@ -478,6 +478,7 @@ export class ScanService {
   store(id: string): ScanView {
     this.mustGet(id);
     this.update(id, { expires_at: null });
+    log.info(`${id} kept in History`);
     this.broadcast(id);
     return this.current(id);
   }

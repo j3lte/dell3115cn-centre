@@ -140,6 +140,7 @@ export class DedaService {
     const n = typeof name === "string" ? name.trim() : "";
     if (n.length < 1 || n.length > NAME_MAX) throw new ValidationError(`Name must be 1 to ${NAME_MAX} characters`);
     this.repo.update(id, { name: n });
+    log.info(`${id} renamed to "${n}"`);
     return this.get(id)!;
   }
 
@@ -147,12 +148,14 @@ export class DedaService {
   remove(id: string): void {
     if (!this.repo.delete(id)) throw new NotFound("Analysis not found");
     rmSync(this.dir(id), { recursive: true, force: true });
+    log.info(`${id} deleted`);
   }
 
   /** Deletes every entry and its images; returns how many entries there were. */
   clear(): number {
     const n = this.repo.clear();
     rmSync(this.root, { recursive: true, force: true });
+    log.info(`cleared ${n} analysis(es)`);
     return n;
   }
 

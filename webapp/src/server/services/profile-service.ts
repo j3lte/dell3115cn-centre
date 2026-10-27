@@ -15,6 +15,18 @@ import { NotFound } from "./errors";
 
 const log = logger("profiles");
 
+/** A destination test's outcome in the log: OK (with its note), or why it failed. */
+async function logTest(what: string, test: () => Promise<TestResult>): Promise<TestResult> {
+  try {
+    const r = await test();
+    log.info(`test of ${what}: OK${r.note ? ` (${r.note})` : ""}`);
+    return r;
+  } catch (e) {
+    log.warn(`test of ${what} failed: ${e instanceof Error ? e.message : String(e)}`);
+    throw e;
+  }
+}
+
 /** The config fields that choose where a destination sends to (and so where a stored secret would go). */
 const TARGET_FIELDS = ["url", "host", "server", "port", "username"];
 
@@ -138,7 +150,7 @@ export class ProfileService {
   async testOutput(id: number): Promise<TestResult> {
     const p = this.getOutputForUse(id);
     const d = this.destinations(p.destination.type);
-    return (await d.test(d.parse(p.destination.config))) ?? {};
+    return logTest(`output profile ${id} "${p.name}" (${p.destination.type})`, async () => (await d.test(d.parse(p.destination.config))) ?? {});
   }
 
   /** Checks a destination configuration before it is saved; `id` is the profile whose stored secrets masked values refer to. */
@@ -147,12 +159,14 @@ export class ProfileService {
     const t = type as DestinationType;
     const d = this.destinations(t);
     this.guardMaskedSecrets(t, config, id, scope);
-    return (await d.test(d.parse(this.unmaskConfig(t, config, id)))) ?? {};
+    return logTest(`a ${t} destination`, async () => (await d.test(d.parse(this.unmaskConfig(t, config, id)))) ?? {});
   }
 
   /** Adds the common profiles whose names are missing. */
   addCommon(): { input: number; output: number } {
-    return this.repo.addCommon();
+    const n = this.repo.addCommon();
+    if (n.input || n.output) log.info(`added common profiles: ${n.input} input, ${n.output} output`);
+    return n;
   }
 
   private mustOutput(id: number): OutputProfile {

@@ -390,6 +390,18 @@ describe("DEDA service log", () => {
     expect(lines.join("\n")).not.toContain("123456");
   });
 
+  test("rename, delete and clear", async () => {
+    const svc = await setup();
+    const scanId = await storedScan();
+    const a = svc.fromHistory(scanId, 1);
+    svc.fromHistory(scanId, 1);
+    await svc.idle();
+    svc.rename(a.id, "Office");
+    svc.remove(a.id);
+    svc.clear();
+    expect(deda().slice(-3)).toEqual([`INFO  deda: ${a.id} renamed to "Office"`, `INFO  deda: ${a.id} deleted`, "INFO  deda: cleared 1 analysis(es)"]);
+  });
+
   test("a failure is a warning", async () => {
     const svc = await setup(analyser({ unreachable: true }));
     const e = svc.fromScan();

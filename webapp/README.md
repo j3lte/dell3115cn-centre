@@ -59,7 +59,7 @@ Settings (environment variables):
 | `TZ` | `UTC` | Time zone for file names (`{date}`, `{time}`) |
 | `PRINTER_URI` | `ipp://<SERVICE_URL host>:631/printers/Dell_MFP_Laser_3115cn` | CUPS queue to read the printer's state from (supplies, alerts, page count) (IPP Get-Printer-Attributes); `off` hides them |
 | `ANALYSE_ENDPOINT` | — | URL of the [analyse service](../analyse/), e.g. `http://analyse:8770`. Turns on the *Analyse* section (tracking dots); unset hides it and `/api/analyse/*` answers 404. See [`docs/ANALYSE.md`](../docs/ANALYSE.md). |
-| `LOG_LEVEL` | `info` | Log level: `debug`, `info`, `warn` or `error`. Logs are plain-text lines on stdout (`docker logs`): scans, review tray edits, the printer button, previews, deliveries, analyses, profile and settings changes, scanner service up/down; `debug` adds every API request. Secrets and document contents are never logged. |
+| `LOG_LEVEL` | `info` | Log level: `debug`, `info`, `warn` or `error`. Logs are plain-text lines on stdout (`docker logs`): scans, review tray edits, the printer button, previews, deliveries, deletions, analyses, profile and settings changes, destination tests, SFTP host keys, assistant download links, scanner service up/down; `debug` adds every API request. Secrets and document contents are never logged. |
 | `SRGB_ICC` | colord's `sRGB.icc` (in the image) | sRGB profile used for the colour transform |
 | `DEVICE_ICC` | `assets/dell3115cn.icm` | The scanner's colour profile (Dell's; not included, see [`assets/README.md`](assets/README.md)). Without it colour scans have a magenta cast; the log warns at startup. |
 

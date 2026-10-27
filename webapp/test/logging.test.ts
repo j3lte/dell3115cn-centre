@@ -5,7 +5,8 @@ import { PRINTER_OFF } from "../src/server/printer";
 import { DEFAULT_FILTER } from "../src/server/pipeline/filters";
 import { magickAvailable } from "../src/server/pipeline/magick";
 import { adhocProfile } from "../src/server/services/scan-service";
-import { captureLog } from "./helpers";
+import { loggedHostKeys } from "../src/server/destinations/sftp";
+import { captureLog, fakeFingerprint, memoryHostKeys } from "./helpers";
 import { makeHarness, type Harness } from "./scan-harness";
 
 let h: Harness;
@@ -86,6 +87,34 @@ describe("info", () => {
     await h.svc.preview();
     expect(of("scan")[0]).toBe("INFO  scan: preview started");
     expect(of("scan")[1]).toMatch(/^INFO  scan: preview done in \d+\.\ds$/);
+  });
+
+  test("destination tests: OK, or the reason they failed", async () => {
+    h = await makeHarness();
+    const ok = h.folderOutput();
+    await h.profiles.testOutput(ok.id);
+    await h.profiles.testDestination("folder", { path: "/nonexistent/x" }, undefined, "targets").catch(() => {});
+    expect(of("profiles")).toEqual([
+      `INFO  profiles: test of output profile ${ok.id} "To folder" (folder): OK`,
+      expect.stringMatching(/^WARN  profiles: test of a folder destination failed: /),
+    ]);
+  });
+
+  test("common profiles: how many were added", async () => {
+    h = await makeHarness();
+    h.profiles.addCommon(); // a fresh database has them all: no line
+    h.profiles.deleteInput(h.profiles.listInput()[0]!.id);
+    h.profiles.addCommon();
+    expect(of("profiles").filter((l) => l.includes("common"))).toEqual(["INFO  profiles: added common profiles: 1 input, 0 output"]);
+  });
+
+  test("SFTP host keys: trusted on first use and forgotten, once each", async () => {
+    const keys = loggedHostKeys(memoryHostKeys());
+    keys.set("Host.example", 22, fakeFingerprint("a"));
+    keys.set("Host.example", 22, fakeFingerprint("b")); // already trusted: no line
+    keys.forget("host.example", 22);
+    keys.forget("host.example", 22); // gone already: no line
+    expect(of("sftp")).toEqual([`INFO  sftp: trusted the host key of Host.example:22 on first use: ${fakeFingerprint("a")}`, "INFO  sftp: forgot the host key of host.example:22"]);
   });
 
   test("a temporary scan's removal is not logged", async () => {
