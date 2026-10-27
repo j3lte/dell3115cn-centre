@@ -16,4 +16,6 @@ export const keys = {
   features: ["features"],
   history: ["scans", "history"],
   scan: (id: string) => ["scans", id],
+  deda: ["analyse", "deda"],
+  dedaCandidates: ["analyse", "deda-candidates"],
 } as const;
