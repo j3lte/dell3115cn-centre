@@ -4,6 +4,7 @@ import { tmpdir as osTmpdir } from "node:os";
 import { join } from "node:path";
 import type { Database } from "bun:sqlite";
 import type { HostKeyStore } from "../src/server/destinations/sftp";
+import { configureLog, type LogLevel } from "../src/server/log";
 import type { ScanInsert } from "../src/server/repos/scan-repo";
 
 export function tmpdir(): string {
@@ -60,4 +61,19 @@ export function memoryHostKeys(): HostKeyStore & { keys: Map<string, string> } {
     },
     forget: (host, port) => void keys.delete(k(host, port)),
   };
+}
+
+/**
+ * Captures log lines for the tests of the enclosing scope, without their timestamp (`INFO  scan: …`); the test run's
+ * level and normal output come back afterwards.
+ */
+export function captureLog(level: LogLevel = "info"): string[] {
+  const lines: string[] = [];
+  let restore = () => {};
+  beforeEach(() => {
+    lines.length = 0;
+    restore = configureLog({ level, sink: (l) => lines.push(l.slice(l.indexOf(" ") + 1)) });
+  });
+  afterEach(() => restore());
+  return lines;
 }

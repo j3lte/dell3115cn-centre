@@ -2,6 +2,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { open } from "node:fs/promises";
 import { posix } from "node:path";
 import { Client, utils, type SFTPWrapper } from "ssh2";
+import { logger } from "../log";
 import { asObject, candidateName, cannotReach, DeliveryError, hostPort, isNetworkError, oneAtATime, str, ValidationError, type Destination } from "./types";
 
 export type SftpConfig = {
@@ -15,6 +16,8 @@ export type SftpConfig = {
   passphrase: string;
 };
 
+const log = logger("sftp");
+
 export type TrustedHostKey = { fingerprint: string; firstSeen: number };
 
 /** Host keys trusted on first use, per server. */
@@ -23,6 +26,24 @@ export interface HostKeyStore {
   /** Stores the key unless one is there already; returns the key now stored (another one if a connection beat us). */
   set(host: string, port: number, fingerprint: string): string;
   forget(host: string, port: number): void;
+}
+
+/** The store with its changes logged: a key trusted on first use, a key forgotten. */
+export function loggedHostKeys(store: HostKeyStore): HostKeyStore {
+  return {
+    get: (host, port) => store.get(host, port),
+    set: (host, port, fingerprint) => {
+      const known = store.get(host, port) !== null;
+      const kept = store.set(host, port, fingerprint);
+      if (!known) log.info(`trusted the host key of ${host}:${port} on first use: ${kept}`);
+      return kept;
+    },
+    forget: (host, port) => {
+      if (!store.get(host, port)) return;
+      store.forget(host, port);
+      log.info(`forgot the host key of ${host}:${port}`);
+    },
+  };
 }
 
 /** One SFTP connection (injectable for tests). Paths are remote; errors carry SFTP status codes (2 = no such file). */

@@ -1,5 +1,6 @@
 import { HTTPException } from "hono/http-exception";
 import { DeliveryError, ValidationError } from "../destinations/types";
+import { logger } from "../log";
 import { InvalidScan, JobNotFound, PrinterOff, ScannerBusy, ServiceUnreachable } from "../scanner-client";
 import { SecretError } from "../secrets";
 import { NotFound, StateError } from "../services/errors";
@@ -7,6 +8,8 @@ import { NotFound, StateError } from "../services/errors";
 /** The `{ error: <code>, message }` answer every failure uses; JSON answers are never cached. */
 export const fail = (status: number, error: string, message: string) =>
   Response.json({ error, message }, { status, headers: { "cache-control": "no-store" } });
+
+const log = logger("api");
 
 /** Maps domain errors to HTTP answers: `{ error: <code>, message }`. */
 export function errorResponse(e: unknown): Response {
@@ -23,6 +26,6 @@ export function errorResponse(e: unknown): Response {
   if (e instanceof PrinterOff) return fail(503, "printer_off", e.message);
   if (e instanceof ServiceUnreachable) return fail(503, "service_unreachable", e.message);
   if (e instanceof DeliveryError) return fail(422, "test_failed", e.message);
-  console.error("API error:", e);
+  log.error(e);
   return fail(500, "internal", e instanceof Error ? e.message : String(e));
 }

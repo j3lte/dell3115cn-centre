@@ -8,7 +8,7 @@ Environment:
   SCAN3115_SIM_PAGES   pages in the simulated feeder (default 3, refilled after each batch)
   SCAN3115_SIM_JAM     simulate one jam at "page:line" (cleared after SCAN3115_SIM_JAM_CLEAR_S, default 5)
   SCAN3115_CORS_ORIGIN send Access-Control-Allow-Origin with this value (default: no CORS headers)
-  SCAN3115_LOG         log level (default INFO)
+  LOG_LEVEL            debug, info (default), warn, error or critical; SCAN3115_LOG (older name) wins
 """
 
 import logging
@@ -19,6 +19,7 @@ import threading
 from . import __version__
 from .device import DeviceManager, UsbTransport
 from .jobs import JobRunner
+from .logsetup import setup_logging
 from .server import StatusHub, make_server
 from .sim import sim_from_env
 
@@ -41,8 +42,7 @@ def _terminate(signum, frame):
 
 
 def main() -> None:
-    logging.basicConfig(level=os.environ.get("SCAN3115_LOG", "INFO"),
-                        format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+    setup_logging(os.environ)
     port = int(os.environ.get("SCAN3115_PORT", "8765"))
     bind = os.environ.get("SCAN3115_BIND", "0.0.0.0")
     spool = os.environ.get("SCAN3115_SPOOL", "/var/lib/scan3115")

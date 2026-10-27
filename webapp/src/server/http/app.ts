@@ -7,9 +7,12 @@ import { scansController } from "./controllers/scans";
 import { settingsController } from "./controllers/settings";
 import { systemController } from "./controllers/system";
 import { docsPage, scalarScript } from "./docs";
+import { logger, logs } from "../log";
 import { errorResponse, fail } from "./errors";
 import { crossSiteGuard } from "./guard";
 import { newRouter } from "./router";
+
+const log = logger("http");
 
 /** `/api/scans/:id` → a regex where a parameter is one path segment. */
 const pathPattern = (path: string) => new RegExp(`^${path.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\/:[^/]+/g, "/[^/]+")}$`);
@@ -20,6 +23,12 @@ const pathPattern = (path: string) => new RegExp(`^${path.replace(/[.+?^${}()|[\
  */
 export function createApp(services: Services) {
   const app = newRouter();
+  app.use("/api/*", async (c, next) => {
+    if (!logs("debug")) return next();
+    const t0 = performance.now();
+    await next();
+    log.debug(`${c.req.method} ${c.req.path} ${c.res.status} ${Math.round(performance.now() - t0)}ms`);
+  });
   app.use("/api/*", crossSiteGuard);
   app.onError((e) => errorResponse(e));
 

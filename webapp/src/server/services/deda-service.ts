@@ -2,11 +2,14 @@ import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { AnalyseFailed, AnalyseUnreachable, type AnalyseClient } from "../analyse-client";
 import { ValidationError } from "../destinations/types";
+import { logger } from "../log";
 import { DEFAULT_FILTER } from "../pipeline/filters";
 import { GLASS_MM } from "../pipeline/region";
 import type { DedaRepo, DedaRow, DedaSource, DedaStatus } from "../repos/deda-repo";
 import { NotFound } from "./errors";
 import { adhocProfile, type AreaMm, type ScanService } from "./scan-service";
+
+const log = logger("deda");
 
 export type DedaView = {
   id: string;
@@ -110,6 +113,7 @@ export class DedaService {
     const id = Bun.randomUUIDv7();
     const now = this.clock();
     this.repo.insert({ id, name: dedaName(now), status: "scanning", source: "scan", scan_id: null, page: null, dpi: null, scanned_at: now });
+    log.info(`${id} started from a glass scan`);
     this.enqueue(id, () => this.scanJob(id));
     return this.get(id)!;
   }
@@ -124,6 +128,7 @@ export class DedaService {
     if (p.dpi < MIN_DPI) throw new ValidationError(`Pages under ${MIN_DPI} dpi can't be analysed for tracking dots`);
     const id = Bun.randomUUIDv7();
     this.repo.insert({ id, name: dedaName(scan.createdAt), status: "analysing", source: "history", scan_id: scanId, page, dpi: p.dpi, scanned_at: scan.createdAt });
+    log.info(`${id} started from history (scan ${scanId} page ${page})`);
     this.enqueue(id, () => this.analysePage(id, scanId, page));
     return this.get(id)!;
   }
@@ -135,6 +140,7 @@ export class DedaService {
     const n = typeof name === "string" ? name.trim() : "";
     if (n.length < 1 || n.length > NAME_MAX) throw new ValidationError(`Name must be 1 to ${NAME_MAX} characters`);
     this.repo.update(id, { name: n });
+    log.info(`${id} renamed to "${n}"`);
     return this.get(id)!;
   }
 
@@ -142,12 +148,14 @@ export class DedaService {
   remove(id: string): void {
     if (!this.repo.delete(id)) throw new NotFound("Analysis not found");
     rmSync(this.dir(id), { recursive: true, force: true });
+    log.info(`${id} deleted`);
   }
 
   /** Deletes every entry and its images; returns how many entries there were. */
   clear(): number {
     const n = this.repo.clear();
     rmSync(this.root, { recursive: true, force: true });
+    log.info(`cleared ${n} analysis(es)`);
     return n;
   }
 
@@ -159,6 +167,7 @@ export class DedaService {
       const tempId = r.source === "scan" ? r.scan_id : null;
       if (tempId) this.chain = this.chain.then(() => this.scans.remove(tempId).catch(() => {}));
     }
+    if (pending.length) log.info(`${pending.length} analysis(es) interrupted by the restart`);
     return pending.length;
   }
 
@@ -184,11 +193,12 @@ export class DedaService {
           if (!this.repo.get(id)) return; // removed while queued
           await work();
         } catch (e) {
-          if (!(e instanceof JobFailed || e instanceof AnalyseUnreachable || e instanceof AnalyseFailed)) console.error(`deda ${id}:`, e);
+          if (e instanceof JobFailed || e instanceof AnalyseUnreachable || e instanceof AnalyseFailed) log.warn(`${id} failed: ${message(e)}`);
+          else log.error(`${id} failed:`, e);
           if (this.repo.get(id)) this.repo.update(id, { status: "failed", error: message(e) });
         }
       })
-      .catch((e) => console.error(`deda ${id}: could not record the failure:`, e));
+      .catch((e) => log.error(`${id}: could not record the failure:`, e));
   }
 
   private async scanJob(id: string): Promise<void> {
@@ -234,6 +244,8 @@ export class DedaService {
       error: null,
       images: JSON.stringify(images.map(([name]) => name)),
     });
+    // Never the decode itself: it identifies the printer.
+    log.info(`${id} done: ${report.found ? `dots found (${report.dots})` : "no dots found"}, ${report.decode ? "decoded" : "not decoded"}`);
   }
 }
 

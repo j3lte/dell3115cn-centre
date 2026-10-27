@@ -1,8 +1,9 @@
-import { afterEach, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { downloadHandler, DownloadStore } from "../src/server/downloads";
 import { mcpHandler } from "../src/server/mcp/http";
+import { captureLog } from "./helpers";
 import { makeHarness, type Harness } from "./scan-harness";
 
 let h: Harness;
@@ -517,4 +518,20 @@ test("forget_sftp_host forgets the SFTP host key trusted for host:port", async (
   const r = await c.callTool({ name: "forget_sftp_host", arguments: { host: "nas.example" } });
   expect(r.isError).toBeFalsy();
   expect(h.services.hostKeys.get("nas.example", 22)).toBeNull();
+});
+
+describe("log", () => {
+  const lines = captureLog();
+
+  test("a download link and a kept scan are logged, never the link or its key", async () => {
+    const { connect } = await setup();
+    h.fake.scenario = { pages: 1 };
+    const c = await connect();
+    const v = body(await c.callTool({ name: "scan", arguments: { source: "adf", mode: "gray", dpi: 75 } }));
+    const links = body(await c.callTool({ name: "get_download_links", arguments: { scan_id: v.id, format: "pdf_multi" } }));
+    await c.callTool({ name: "store_scan", arguments: { scan_id: v.id } });
+    expect(lines).toContain(`INFO  mcp: download link for scan ${v.id}: 1 file(s), pdf_multi`);
+    expect(lines).toContain(`INFO  scan: ${v.id} kept in History`);
+    expect(lines.join("\n")).not.toContain(new URL(links.files[0].url).searchParams.get("key")!);
+  });
 });

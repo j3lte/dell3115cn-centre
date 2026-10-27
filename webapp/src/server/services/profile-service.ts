@@ -1,5 +1,6 @@
 import type { Destination, Destinations } from "../destinations";
 import { DESTINATION_TYPES, SECRET_FIELDS, SECRET_MASK, ValidationError, type DestinationType } from "../destinations/types";
+import { logger } from "../log";
 import { validateFilter } from "../pipeline/filters";
 import {
   validateInput,
@@ -11,6 +12,20 @@ import {
 } from "../profiles";
 import type { ProfileRepo } from "../repos/profile-repo";
 import { NotFound } from "./errors";
+
+const log = logger("profiles");
+
+/** A destination test's outcome in the log: OK (with its note), or why it failed. */
+async function logTest(what: string, test: () => Promise<TestResult>): Promise<TestResult> {
+  try {
+    const r = await test();
+    log.info(`test of ${what}: OK${r.note ? ` (${r.note})` : ""}`);
+    return r;
+  } catch (e) {
+    log.warn(`test of ${what} failed: ${e instanceof Error ? e.message : String(e)}`);
+    throw e;
+  }
+}
 
 /** The config fields that choose where a destination sends to (and so where a stored secret would go). */
 const TARGET_FIELDS = ["url", "host", "server", "port", "username"];
@@ -57,16 +72,22 @@ export class ProfileService {
 
   /** Ignores a given `id`. */
   createInput(draft: InputProfileDraft): InputProfile {
-    return this.repo.saveInput(this.checkInput({ ...draft, id: undefined }));
+    const p = this.repo.saveInput(this.checkInput({ ...draft, id: undefined }));
+    log.info(`input profile ${p.id} "${p.name}" created`);
+    return p;
   }
 
   updateInput(id: number, draft: InputProfileDraft): InputProfile {
     this.getInput(id);
-    return this.repo.saveInput(this.checkInput({ ...draft, id }));
+    const p = this.repo.saveInput(this.checkInput({ ...draft, id }));
+    log.info(`input profile ${id} "${p.name}" updated`);
+    return p;
   }
 
   deleteInput(id: number): void {
+    if (!this.repo.inputExists(id)) return;
     this.repo.deleteInput(id);
+    log.info(`input profile ${id} deleted`);
   }
 
   inputExists(id: number): boolean {
@@ -110,11 +131,15 @@ export class ProfileService {
     if (d.destination) this.guardMaskedSecrets(d.destination.type, (d.destination.config ?? {}) as Record<string, unknown>, d.id, scope);
     this.checkOutput(d, d.id);
     validateOutput(d);
-    return this.repo.toPublic(this.repo.saveOutput(d));
+    const p = this.repo.saveOutput(d);
+    log.info(`output profile ${p.id} "${p.name}" ${d.id === undefined ? "created" : "updated"}`);
+    return this.repo.toPublic(p);
   }
 
   deleteOutput(id: number): void {
+    if (!this.repo.outputExists(id)) return;
     this.repo.deleteOutput(id);
+    log.info(`output profile ${id} deleted`);
   }
 
   outputExists(id: number): boolean {
@@ -125,7 +150,7 @@ export class ProfileService {
   async testOutput(id: number): Promise<TestResult> {
     const p = this.getOutputForUse(id);
     const d = this.destinations(p.destination.type);
-    return (await d.test(d.parse(p.destination.config))) ?? {};
+    return logTest(`output profile ${id} "${p.name}" (${p.destination.type})`, async () => (await d.test(d.parse(p.destination.config))) ?? {});
   }
 
   /** Checks a destination configuration before it is saved; `id` is the profile whose stored secrets masked values refer to. */
@@ -134,12 +159,14 @@ export class ProfileService {
     const t = type as DestinationType;
     const d = this.destinations(t);
     this.guardMaskedSecrets(t, config, id, scope);
-    return (await d.test(d.parse(this.unmaskConfig(t, config, id)))) ?? {};
+    return logTest(`a ${t} destination`, async () => (await d.test(d.parse(this.unmaskConfig(t, config, id)))) ?? {});
   }
 
   /** Adds the common profiles whose names are missing. */
   addCommon(): { input: number; output: number } {
-    return this.repo.addCommon();
+    const n = this.repo.addCommon();
+    if (n.input || n.output) log.info(`added common profiles: ${n.input} input, ${n.output} output`);
+    return n;
   }
 
   private mustOutput(id: number): OutputProfile {

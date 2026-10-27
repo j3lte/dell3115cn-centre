@@ -9,6 +9,7 @@ test("defaults", () =>
     appSecret: undefined,
     printerUri: "ipp://localhost:631/printers/Dell_MFP_Laser_3115cn",
     analyseUrl: null,
+    logLevel: "info",
   }));
 
 test("env overrides", () =>
@@ -19,6 +20,7 @@ test("env overrides", () =>
     appSecret: "x",
     printerUri: "ipp://scanner.example:631/printers/Dell_MFP_Laser_3115cn",
     analyseUrl: null,
+    logLevel: "info",
   }));
 
 test("empty APP_SECRET counts as unset", () => expect(loadConfig({ APP_SECRET: "" }).appSecret).toBeUndefined());
@@ -36,4 +38,9 @@ test("ANALYSE_ENDPOINT: unset or empty is off, trailing slash trimmed, scheme ch
   expect(() => loadConfig({ ANALYSE_ENDPOINT: "ftp://x" })).toThrow("ANALYSE_ENDPOINT must start with http:// or https://: ftp://x");
   expect(() => loadConfig({ ANALYSE_ENDPOINT: "http://" })).toThrow("ANALYSE_ENDPOINT");
   expect(() => loadConfig({ ANALYSE_ENDPOINT: "http://a b" })).toThrow("ANALYSE_ENDPOINT");
+});
+
+test("LOG_LEVEL: info by default, checked", () => {
+  expect(loadConfig({ LOG_LEVEL: "debug" }).logLevel).toBe("debug");
+  expect(() => loadConfig({ LOG_LEVEL: "loud" })).toThrow("LOG_LEVEL");
 });

@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { DeliveryError, ValidationError } from "../destinations/types";
 import type { LiveHub } from "../live";
+import { logger } from "../log";
 import type { DownloadFile } from "../downloads";
 import { encodeOutputs, type OutFile } from "../output/encode";
 import { renderName } from "../output/filename";
@@ -20,6 +21,8 @@ import type { ProfileService } from "./profile-service";
 import type { SettingsService } from "./settings-service";
 import type { CalibrationService } from "./calibration-service";
 import { NotFound, StateError } from "./errors";
+
+const log = logger("scan");
 
 export type AreaMm = [number, number, number, number];
 
@@ -382,7 +385,7 @@ export class ScanService {
     const wrapped: Promise<void> = work
       .catch((e) => {
         // A bug must never leave a scan looking active forever.
-        console.error(`scan ${id}:`, e);
+        log.error(`${id}:`, e);
         const r = this.row(id);
         if (r && (r.status === "scanning" || r.status === "delivering")) {
           this.update(id, { status: "failed", error: `Internal error: ${message(e)}` });
@@ -465,6 +468,7 @@ export class ScanService {
       expires_at: o.expiresAt,
     });
     this.jobs.set(id, jobId);
+    log.info(`${id} started (${o.origin}): ${input.name}, ${input.source} ${input.mode} ${input.dpi} dpi${o.review ? ", review" : ""}`);
     this.track(id, this.runBatch(id, jobId));
     this.broadcast(id);
     return this.current(id);
@@ -474,6 +478,7 @@ export class ScanService {
   store(id: string): ScanView {
     this.mustGet(id);
     this.update(id, { expires_at: null });
+    log.info(`${id} kept in History`);
     this.broadcast(id);
     return this.current(id);
   }
@@ -503,6 +508,7 @@ export class ScanService {
       const jobId = await this.client.startScan(this.request(input, area));
       this.jobs.set(scanId, jobId);
       this.update(scanId, { status: "scanning", error: null });
+      log.info(`${scanId} scanning more pages`);
       this.track(scanId, this.runBatch(scanId, jobId));
       this.broadcast(scanId);
       return this.current(scanId);
@@ -613,6 +619,10 @@ export class ScanService {
     } else if (r.review || cancelled) status = r.origin === "mcp" || r.origin === "analyse" ? "ready" : "review";
     else status = "delivering";
     this.update(id, { status, problem, error, page_count: total });
+    if (status === "failed") log.warn(`${id} failed: ${error}`);
+    else if (status === "cancelled") log.info(`${id} cancelled`);
+    else if (issues.length) log.warn(`${id} scanned ${b.received} page(s), ${status}: ${issues.join("; ")}`);
+    else log.info(`${id} scanned ${b.received} page(s), ${status}`);
     this.broadcast(id);
     if (status === "delivering" && r.output_profile_id !== null) await this.deliver(id, r.output_profile_id);
   }
@@ -627,6 +637,8 @@ export class ScanService {
       this.update(id, { error: null });
       const profileRow = this.profiles.findOutput(outputId);
       const name = profileRow?.name ?? `Output profile ${outputId}`;
+      const to = `"${name}" (${profileRow?.destination.type ?? "missing"})`;
+      const t0 = performance.now();
       const did = this.repo.insertDelivery(id, outputId, name, this.clock());
       this.broadcast(id);
       let files: OutFile[] = [];
@@ -650,9 +662,11 @@ export class ScanService {
         await dest.send(files, cfg, { scanId: id, title: renderName(profile.filenameTemplate, ctx) });
         this.repo.markDeliverySent(did);
         this.update(id, { status: "done", error: null });
+        log.info(`${id} delivered to ${to}: ${files.length} file(s) in ${((performance.now() - t0) / 1000).toFixed(1)}s`);
       } catch (e) {
         const msg = e instanceof SecretError ? `${name}: stored credentials can't be decrypted — re-enter credentials` : message(e);
-        if (!(e instanceof DeliveryError || e instanceof SecretError || e instanceof ValidationError)) console.error(`delivery ${did} of scan ${id}:`, e);
+        if (e instanceof DeliveryError || e instanceof SecretError || e instanceof ValidationError) log.warn(`${id} delivery to ${to} failed: ${msg}`);
+        else log.error(`${id} delivery ${did} to ${to} failed:`, e);
         this.repo.markDeliveryFailed(did, msg, store());
         // A scan that was delivered once stays done; the failed resend shows as its own delivery row.
         const sentBefore = this.repo.hasSentDelivery(id);
@@ -732,6 +746,7 @@ export class ScanService {
       const swap = degrees !== 180;
       this.repo.setPageRotation(scanId, n, (p.rotation + degrees) % 360, swap ? p.height : p.width, swap ? p.width : p.height);
       await this.rerenderThumbs(scanId, n);
+      log.info(`${scanId} page ${n} rotated ${degrees}°`);
       this.broadcast(scanId);
       return this.current(scanId);
     });
@@ -749,6 +764,7 @@ export class ScanService {
       rmSync(this.abs(p.path), { force: true });
       rmSync(this.abs(this.thumbFor(p.path)), { force: true });
       rmSync(this.abs(this.viewFor(p.path)), { force: true });
+      log.info(`${scanId} page ${n} removed`);
       this.broadcast(scanId);
       return this.current(scanId);
     });
@@ -762,6 +778,7 @@ export class ScanService {
         Array.isArray(order) && order.length === current.length && new Set(order).size === order.length && order.every((x) => current.includes(x));
       if (!valid) throw new ValidationError("order must list every page number exactly once");
       this.renumber(scanId, order);
+      log.info(`${scanId} pages reordered: ${order.join(", ")}`);
       this.broadcast(scanId);
       return this.current(scanId);
     });
@@ -773,6 +790,7 @@ export class ScanService {
       this.editable(this.mustRow(scanId));
       this.update(scanId, { filter: JSON.stringify(filter) });
       await this.rerenderThumbs(scanId);
+      log.info(`${scanId} filter changed`);
       this.broadcast(scanId);
       return this.current(scanId);
     });
@@ -785,6 +803,7 @@ export class ScanService {
       this.page(scanId, n);
       this.repo.setPageFilter(scanId, n, filter ? JSON.stringify(filter) : null);
       await this.rerenderThumbs(scanId, n);
+      log.info(`${scanId} page ${n} filter ${filter ? "changed" : "reset"}`);
       this.broadcast(scanId);
       return this.current(scanId);
     });
@@ -920,6 +939,7 @@ export class ScanService {
     }
     if (r.status !== "review" && r.status !== "ready") throw new StateError(`A ${r.status} scan can't be cancelled`);
     this.update(scanId, { status: "cancelled" });
+    log.info(`${scanId} cancelled`);
     this.broadcast(scanId);
     return this.current(scanId);
   }
@@ -945,11 +965,12 @@ export class ScanService {
   }
 
   async remove(scanId: string): Promise<void> {
-    this.mustRow(scanId);
+    const temporary = this.mustRow(scanId).expires_at !== null; // assistant and analysis scans: not History
     const jobId = this.jobs.get(scanId);
     if (jobId) await this.cancelJob(scanId, jobId).catch(() => {});
     await this.settled(scanId);
     await this.lock(scanId, async () => this.deleteNow(scanId));
+    if (!temporary) log.info(`${scanId} deleted`);
   }
 
   /** Deletes finished scans older than `days`. Returns how many were removed. */
@@ -957,6 +978,7 @@ export class ScanService {
     const cutoff = this.clock() - days * DAY_MS;
     const ids = this.repo.idsOlderThan(cutoff).filter((id) => !this.jobs.has(id) && !this.tasks.has(id));
     for (const id of ids) this.deleteNow(id);
+    if (ids.length) log.info(`removed ${ids.length} scan(s) older than ${days} days`);
     return ids.length;
   }
 
@@ -977,13 +999,16 @@ export class ScanService {
     const s = this.settings.read();
     const ids = s.buttonOutputProfileIds ?? {};
     const outputId = (e.format ? ids[e.format] : undefined) ?? ids.pdf ?? Object.values(ids).find((v) => typeof v === "number");
+    log.info(`printer button pressed (${e.format ?? "no format"})`);
     if (s.buttonInputProfileId === null || outputId === undefined) {
+      log.warn("printer button: no default profiles are set");
       this.hub.broadcast({ type: "notice", message: "Printer button pressed, but no default profiles are set" });
       return null;
     }
     try {
       return await this.start(s.buttonInputProfileId, outputId, { review: false, origin: "button" });
     } catch (err) {
+      log.warn(`printer button: ${message(err)}`);
       this.hub.broadcast({ type: "notice", message: `Printer button: ${message(err)}` });
       return null;
     }
@@ -993,6 +1018,8 @@ export class ScanService {
 
   /** Quick 75 dpi colour scan of the whole glass, ICC-corrected PNG. Not stored. */
   async preview(): Promise<Uint8Array<ArrayBuffer>> {
+    log.info("preview started");
+    const t0 = performance.now();
     const jobId = await this.client.startScan({ source: "flatbed", mode: "color", dpi: 75 });
     const work = mkdtempSync(join(tmpdir(), "scan-preview-"));
     try {
@@ -1001,6 +1028,7 @@ export class ScanService {
       if (!result || result.pages < 1) throw new StateError(result?.message || "The preview produced no image");
       const out = join(work, "preview.png");
       await pnmToPng(await this.client.fetchPage(jobId, 1), "color", out, { whiteGains: this.calibration.gains("flatbed") });
+      log.info(`preview done in ${((performance.now() - t0) / 1000).toFixed(1)}s`);
       return new Uint8Array(readFileSync(out));
     } finally {
       await this.client.deleteJob(jobId).catch(() => {});

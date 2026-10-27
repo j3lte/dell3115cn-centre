@@ -3,7 +3,7 @@ import type { AnalyseClient } from "../analyse-client";
 import type { LiveHub } from "../live";
 import type { PrinterSource } from "../printer";
 import { createDestinations } from "../destinations";
-import type { HostKeyStore } from "../destinations/sftp";
+import { loggedHostKeys, type HostKeyStore } from "../destinations/sftp";
 import { DedaRepo } from "../repos/deda-repo";
 import { HostKeyRepo } from "../repos/host-key-repo";
 import { ProfileRepo } from "../repos/profile-repo";
@@ -49,7 +49,7 @@ export type ServicesDeps = {
 /** The composition root: one database and one scanner client behind every service. */
 export function createServices(deps: ServicesDeps): Services {
   const { db, client, hub, dataDir, clock } = deps;
-  const hostKeys = new HostKeyRepo(db, clock);
+  const hostKeys = loggedHostKeys(new HostKeyRepo(db, clock));
   const profiles = new ProfileService(new ProfileRepo(db, deps.box), createDestinations({ hostKeys }));
   const settings = new SettingsService(new SettingsRepo(db), profiles, deps.secret, deps.onMcpChange);
   const calibration = new CalibrationService(settings, client, clock);

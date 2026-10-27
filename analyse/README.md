@@ -19,7 +19,9 @@ cd analyse && docker compose up --build
 `docker build .` runs the test suite first (stage `test`); the runtime image is only produced if it passes. The image
 is Alpine 3.22 with Alpine's numpy, SciPy, OpenCV, Pillow and ReportLab packages, and DEDA 2.0b4 plus PyPDF2 3.0.1
 from pip without their dependencies (DEDA would otherwise pull in the non-headless `opencv-python` and `eel`, which it
-does not need for decoding). It runs as a non-root user and listens on port 8770 (`PORT` to change).
+does not need for decoding). It runs as a non-root user and listens on port 8770 (`PORT` to change). It logs one
+line per request to stdout (`LOG_LEVEL`: `debug`, `info`, `warn` or `error`; default `info`), never the image or its
+results.
 
 Memory: one page is analysed at a time; a 600 dpi A4 page peaks at about 0.8 GiB (8-bit input) to just under 1 GiB
 (16-bit input). Give the container 1.5 GiB (`mem_limit: 1536m`); 1 GiB is too tight.

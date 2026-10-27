@@ -3,6 +3,7 @@
  * Keeps a live SSE connection to /api/events for status, reconnecting with backoff.
  */
 import { rmSync } from "node:fs";
+import { logger } from "./log";
 
 export type ScannerStatus = {
   service: "connecting" | "connected" | "unreachable";
@@ -106,6 +107,8 @@ export async function* readSse(body: ReadableStream<Uint8Array>, onActivity?: ()
   }
 }
 
+const log = logger("scanner");
+
 const INITIAL: ScannerStatus = { service: "connecting", printer: null, paperInFeeder: false };
 
 export class ScannerClient {
@@ -121,6 +124,8 @@ export class ScannerClient {
   private running = false;
   private abort: AbortController | null = null;
   private wake: (() => void) | null = null;
+  /** The service state last written to the log: reconnect attempts don't repeat it. */
+  private loggedService: ScannerStatus["service"] = "connecting";
 
   constructor(baseUrl: string, opts: ScannerClientOptions = {}) {
     this.base = baseUrl.replace(/\/+$/, "");
@@ -151,13 +156,29 @@ export class ScannerClient {
     )
       return;
     this.status = next;
+    this.logStatus(prev, next);
     for (const cb of [...this.statusListeners]) {
       try {
         cb(next);
       } catch (e) {
-        console.error("status listener failed:", e);
+        log.error("status listener failed:", e);
       }
     }
+  }
+
+  /** Service up/down once per change, and printer state changes other than starting or ending a scan. */
+  private logStatus(prev: ScannerStatus, next: ScannerStatus): void {
+    if (next.service === "connecting") return;
+    if (next.service !== this.loggedService) {
+      this.loggedService = next.service;
+      if (next.service === "connected") log.info(`service connected, printer ${next.printer ?? "unknown"}`);
+      else log.warn(`service unreachable: ${next.error ?? "no answer"}`);
+      return;
+    }
+    if (next.service !== "connected" || prev.printer === next.printer) return;
+    const scanEdge = (prev.printer === "idle" && next.printer === "scanning") || (prev.printer === "scanning" && next.printer === "idle");
+    if (scanEdge) return;
+    (next.printer === "jammed" ? log.warn : log.info)(`printer ${next.printer ?? "unknown"}`);
   }
 
   start(): void {
