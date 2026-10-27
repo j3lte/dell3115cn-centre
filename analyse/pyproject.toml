@@ -1,0 +1,25 @@
+[project]
+name = "deda-svc"
+version = "0.1.0"
+description = "Finds and decodes yellow printer tracking dots in scanned pages"
+license = "GPL-3.0-or-later"
+requires-python = ">=3.12"
+dependencies = [
+    "numpy",
+    "scipy",
+    "opencv-python-headless",
+    "pillow",
+    "deda==2.0b4",
+    "PyPDF2==3.0.1",
+]
+
+[dependency-groups]
+dev = ["pytest"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+filterwarnings = [
+    # deda needs PyPDF2 3.0.1, which warns about its own deprecation on import.
+    "ignore:PyPDF2 is deprecated:DeprecationWarning",
+]
