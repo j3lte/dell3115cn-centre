@@ -62,11 +62,14 @@ was reverse-engineered and is documented in `docs/PROTOCOL.md`.
   `docs: …`), a subject line that says what changed, and a body only when the why isn't obvious.
 - **CI** (`.github/workflows/ci.yml`) must pass before merging: service, CUPS and release script
   tests (Debian 12 arm64, like the print server), webapp typecheck, the webapp image build with its test stage, and
-  the `analyse` job (`docker build analyse`, which runs the tests).
+  the `analyse` job (`docker build analyse`, which runs the tests). Each job runs only when its folder changed (job
+  `changes`; a change under `.github/workflows/` runs everything, and so does a manual run).
 - **Releases**: run the manual *Release* workflow (`.github/workflows/release.yml`: patch, minor or major bump of the
   latest tag, or an exact version; `tools/version.py`) or push a tag `x.y.z` (semver, no `v`) on `main`; CI publishes
   `ghcr.io/j3lte/dell3115cn-centre:x.y.z` and `:latest`, and the same tags of
-  `ghcr.io/j3lte/dell3115cn-centre-analyse`. Pushes to `main` publish `:build-<short commit hash>` only.
+  `ghcr.io/j3lte/dell3115cn-centre-analyse` (a release always builds both). Pushes to `main` publish
+  `:build-<short commit hash>`, only for the images whose folder changed; afterwards `cleanup-images.yml` keeps the 3
+  newest build images per image (a dry run unless the repository variable `GHCR_CLEANUP_DRY_RUN` is `false`).
   After publishing a release, CI renames `## [Unreleased]` in `CHANGELOG.md` to `## [x.y.z](<compare link>)`, puts
   a new empty `## [Unreleased]` (followed by three blank lines) above it, commits that to `main` and creates the
   GitHub release with the same items (`tools/changelog.py`). If `[Unreleased]` is empty, the release lists its
