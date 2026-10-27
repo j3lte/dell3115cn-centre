@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { cx } from "../../helpers/format";
 import { ROUTE_LABELS } from "../../helpers/routes";
 import type { Route } from "../../types/ui";
+import { AnalyseIcon } from "../icons/AnalyseIcon";
 import { HistoryIcon } from "../icons/HistoryIcon";
 import { PrinterIcon } from "../icons/PrinterIcon";
 import { ProfilesIcon } from "../icons/ProfilesIcon";
@@ -11,6 +12,7 @@ import { SettingsIcon } from "../icons/SettingsIcon";
 const ICONS: Record<Route, ReactNode> = {
   scan: <ScanIcon />,
   history: <HistoryIcon />,
+  analyse: <AnalyseIcon />,
   printer: <PrinterIcon />,
   profiles: <ProfilesIcon />,
   settings: <SettingsIcon />,

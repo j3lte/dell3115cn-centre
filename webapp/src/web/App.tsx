@@ -4,11 +4,14 @@ import { ConnectionBar } from "./components/status/ConnectionBar";
 import { NoticeBar } from "./components/status/NoticeBar";
 import { PrinterAlert } from "./components/status/PrinterAlert";
 import { cx } from "./helpers/format";
+import { visibleRoutes } from "./helpers/routes";
 import { headerAlert, navDot } from "./helpers/printer";
 import { useLive } from "./hooks/useLive";
 import { usePrinter } from "./hooks/usePrinter";
+import { useFeatures } from "./hooks/useFeatures";
 import { useProfiles } from "./hooks/useProfiles";
 import { useRoute } from "./hooks/useRoute";
+import { AnalysePage } from "./pages/AnalysePage";
 import { HistoryPage } from "./pages/HistoryPage";
 import { ProfilesPage } from "./pages/ProfilesPage";
 import { ScanPage } from "./pages/ScanPage";
@@ -21,7 +24,9 @@ import { SettingsPage } from "./pages/SettingsPage";
  */
 export function App() {
   const live = useLive();
-  const route = useRoute();
+  const features = useFeatures();
+  const routes = visibleRoutes(features);
+  const route = useRoute(routes);
   const profiles = useProfiles();
   const printer = usePrinter();
   const printerError = headerAlert(printer.view);
@@ -29,7 +34,7 @@ export function App() {
 
   return (
     <div className="min-h-dvh pb-[calc(64px+env(safe-area-inset-bottom))] md:pb-0 md:pl-22 lg:pl-64">
-      <Sidebar state={live.state} onConnect={live.reconnect} route={route} dot={dot} printerError={printerError} />
+      <Sidebar state={live.state} onConnect={live.reconnect} route={route} routes={routes} dot={dot} printerError={printerError} />
 
       <div className="lg:hidden">
         <ConnectionBar state={live.state} onConnect={live.reconnect} />
@@ -42,12 +47,13 @@ export function App() {
         {profiles.error && <p className="msg msg-error mb-3">{profiles.error}</p>}
         {route === "scan" && <ScanPage live={live} profiles={profiles} />}
         {route === "history" && <HistoryPage live={live} profiles={profiles} />}
+        {route === "analyse" && <AnalysePage />}
         {route === "printer" && <PrinterPage printer={printer} />}
         {route === "profiles" && <ProfilesPage profiles={profiles} />}
         {route === "settings" && <SettingsPage profiles={profiles} />}
       </main>
 
-      <BottomNav route={route} dot={dot} />
+      <BottomNav route={route} routes={routes} dot={dot} />
     </div>
   );
 }

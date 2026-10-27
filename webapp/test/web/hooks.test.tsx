@@ -14,6 +14,7 @@ import { keys } from "../../src/web/lib/query";
 import { useHashParts } from "../../src/web/hooks/useHashParts";
 import { useMediaQuery } from "../../src/web/hooks/useMediaQuery";
 import { usePick } from "../../src/web/hooks/usePick";
+import { ROUTES } from "../../src/web/helpers/routes";
 import { useRoute } from "../../src/web/hooks/useRoute";
 import { useSaveInputProfile } from "../../src/web/hooks/useSaveInputProfile";
 import { useSaveOutputProfile } from "../../src/web/hooks/useSaveOutputProfile";
@@ -61,7 +62,7 @@ test("useHashParts follows the hash", () => {
 
 test("useRoute maps unknown hashes to scan", () => {
   location.hash = "#/nonsense";
-  const { result } = renderHook(() => useRoute(), { wrapper });
+  const { result } = renderHook(() => useRoute(ROUTES), { wrapper });
   expect(result.current).toBe("scan");
   setHash("#/printer");
   expect(result.current).toBe("printer");

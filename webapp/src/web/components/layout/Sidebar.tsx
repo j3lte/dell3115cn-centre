@@ -1,4 +1,3 @@
-import { ROUTES } from "../../helpers/routes";
 import type { LiveState, Route } from "../../types/ui";
 import { ConnectionBar } from "../status/ConnectionBar";
 import { PrinterAlert } from "../status/PrinterAlert";
@@ -10,12 +9,14 @@ export function Sidebar({
   state,
   onConnect,
   route,
+  routes,
   dot,
   printerError,
 }: {
   state: LiveState;
   onConnect: () => void;
   route: Route;
+  routes: Route[];
   dot: "error" | "warning" | null;
   printerError: string | null;
 }) {
@@ -27,7 +28,7 @@ export function Sidebar({
         {printerError && <PrinterAlert text={printerError} variant="panel" />}
       </div>
       <nav aria-label="Main" className="flex flex-col gap-1">
-        {ROUTES.map((r) => (
+        {routes.map((r) => (
           <NavItem key={r} route={r} current={r === route} kind="side" dot={dot} />
         ))}
       </nav>
