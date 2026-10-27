@@ -1,4 +1,4 @@
-import { getDestination } from "../destinations";
+import type { Destination, Destinations } from "../destinations";
 import { DESTINATION_TYPES, SECRET_FIELDS, SECRET_MASK, ValidationError, type DestinationType } from "../destinations/types";
 import { validateFilter } from "../pipeline/filters";
 import {
@@ -13,7 +13,7 @@ import type { ProfileRepo } from "../repos/profile-repo";
 import { NotFound } from "./errors";
 
 /** The config fields that choose where a destination sends to (and so where a stored secret would go). */
-const TARGET_FIELDS = ["url", "host", "server"];
+const TARGET_FIELDS = ["url", "host", "server", "port", "username"];
 
 /**
  * Which fields must stay unchanged for a masked secret to keep the stored one. "targets" (the web UI): only where the
@@ -21,9 +21,23 @@ const TARGET_FIELDS = ["url", "host", "server"];
  */
 export type GuardScope = "targets" | "all";
 
+export type TestResult = { note?: string };
+
 /** Input and output profiles: validation, masked-secret rules and the checks before a destination is saved or tested. */
 export class ProfileService {
-  constructor(private readonly repo: ProfileRepo) {}
+  constructor(
+    private readonly repo: ProfileRepo,
+    private readonly destinations: Destinations,
+  ) {}
+
+  destination(type: DestinationType): Destination<any> {
+    return this.destinations(type);
+  }
+
+  /** Destination types no longer offered, with the message their profiles show. */
+  retiredDestinations(): Partial<Record<DestinationType, string>> {
+    return this.destinations.retired;
+  }
 
   // ---- input profiles
 
@@ -107,20 +121,20 @@ export class ProfileService {
     return this.repo.outputExists(id);
   }
 
-  /** Checks that a saved profile's destination is reachable. */
-  async testOutput(id: number): Promise<void> {
+  /** Checks that a saved profile's destination is reachable; `note` is something it works despite. */
+  async testOutput(id: number): Promise<TestResult> {
     const p = this.getOutputForUse(id);
-    const d = getDestination(p.destination.type);
-    await d.test(d.parse(p.destination.config));
+    const d = this.destinations(p.destination.type);
+    return (await d.test(d.parse(p.destination.config))) ?? {};
   }
 
   /** Checks a destination configuration before it is saved; `id` is the profile whose stored secrets masked values refer to. */
-  async testDestination(type: string, config: Record<string, unknown>, id: number | undefined, scope: GuardScope): Promise<void> {
+  async testDestination(type: string, config: Record<string, unknown>, id: number | undefined, scope: GuardScope): Promise<TestResult> {
     if (!DESTINATION_TYPES.includes(type as DestinationType)) throw new ValidationError(`Unknown destination: ${type}`);
     const t = type as DestinationType;
-    const d = getDestination(t);
+    const d = this.destinations(t);
     this.guardMaskedSecrets(t, config, id, scope);
-    await d.test(d.parse(this.unmaskConfig(t, config, id)));
+    return (await d.test(d.parse(this.unmaskConfig(t, config, id)))) ?? {};
   }
 
   /** Adds the common profiles whose names are missing. */
@@ -171,6 +185,6 @@ export class ProfileService {
     if (!draft.destination || !DESTINATION_TYPES.includes(draft.destination.type)) throw new ValidationError(`Unknown destination: ${draft.destination?.type}`);
     const cfg = this.unmaskConfig(draft.destination.type, (draft.destination.config ?? {}) as Record<string, unknown>, id);
     for (const f of SECRET_FIELDS[draft.destination.type]) if (cfg[f] === undefined) cfg[f] = "";
-    getDestination(draft.destination.type).parse(cfg);
+    this.destinations(draft.destination.type).parse(cfg);
   }
 }

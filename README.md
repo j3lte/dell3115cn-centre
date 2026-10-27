@@ -23,7 +23,7 @@ print driver.
 | Part | What it does |
 |---|---|
 | [`scanner-service/`](scanner-service/) | Python service on the print server (e.g. a Raspberry Pi). Owns the scanner over USB and offers scanning over HTTP + server-sent events: flatbed and feeder, line art / gray / colour, 75–600 dpi, 8- or 16-bit colour, regions, the panel's Scan button. Stdlib + pyusb, runs on 32-bit ARM. |
-| [`webapp/`](webapp/) | Bun + TypeScript + React app in Docker. Input and output profiles, preview with region selection, automatic page orientation, filters (incl. sharpening that undoes the scanner's measured blur), review tray, single/multi-page PDF, PNG, JPEG, TIFF, delivery to download, folder, SMB, FTP, Paperless-ngx, Papra or a webhook, history. |
+| [`webapp/`](webapp/) | Bun + TypeScript + React app in Docker. Input and output profiles, preview with region selection, automatic page orientation, filters (incl. sharpening that undoes the scanner's measured blur), review tray, single/multi-page PDF, PNG, JPEG, TIFF, delivery to download, folder, SFTP, FTP, Paperless-ngx, Papra or a webhook, history. |
 | [`analyse/`](analyse/) | Optional service for the web app's *Analyse* section: finds the yellow tracking dots a colour laser printer puts on every page in a scan and decodes them with [DEDA](https://github.com/dfd-tud/deda). Separate image, GPL-3.0-or-later (see [License](#license)). Details: [`docs/ANALYSE.md`](docs/ANALYSE.md). |
 | `webapp` → `/mcp/` | MCP server: an AI assistant (e.g. Claude) can check the scanner, scan with its own settings, look at and zoom into pages, get one-time download links, and manage profiles and history. |
 | [`cups/`](cups/) | Print driver: PCL XL rendered on the server by Ghostscript (minutes faster than the printer's own PostScript for photo pages, true grayscale), JPEG-preserving image filter, toner, belt unit and fuser levels in CUPS. |
@@ -132,7 +132,7 @@ checking the printed pages.
 ```sh
 cd scanner-service && uv run --python 3.11 --with pytest pytest -q     # service tests (simulator, no hardware)
 cd webapp && bun install && bun test                                 # web app tests
-docker build --target test webapp                                    # web app tests on Debian (ImageMagick, Tesseract)
+docker build --target test webapp                                    # web app tests on Alpine (ImageMagick, Tesseract)
 uv run --with pytest pytest cups/tests                               # print filter tests
 uv run --with pytest pytest tools/tests                               # release script tests (changelog, version)
 cd analyse && uv run --with pytest pytest -q                          # analyse service tests (generated pages)

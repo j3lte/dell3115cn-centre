@@ -6,7 +6,7 @@ Phone-first, responsive web app for the Dell MFP Laser 3115cn scanner. It talks 
 - **Input profiles**: feeder or flatbed, line art / gray / colour, 75–600 dpi, paper size, automatic orientation,
   default filter.
 - **Output profiles**: single- or multi-page PDF, PNG, JPEG, single- or multi-page TIFF; file name template
-  (`{date}`, `{time}`, `{datetime}`, `{profile}`, `{input}`, `{n}`, `{page}`); destination: download, folder, SMB,
+  (`{date}`, `{time}`, `{datetime}`, `{profile}`, `{input}`, `{n}`, `{page}`); destination: download, folder, SFTP,
   FTP/FTPS, Paperless-ngx, Papra or a webhook, each with a **Test** button.
 - All profile settings, the common profiles a new installation starts with, formats and destinations:
   [`docs/PROFILES.md`](docs/PROFILES.md).
@@ -59,7 +59,7 @@ Settings (environment variables):
 | `TZ` | `UTC` | Time zone for file names (`{date}`, `{time}`) |
 | `PRINTER_URI` | `ipp://<SERVICE_URL host>:631/printers/Dell_MFP_Laser_3115cn` | CUPS queue to read the printer's state from (supplies, alerts, page count) (IPP Get-Printer-Attributes); `off` hides them |
 | `ANALYSE_ENDPOINT` | — | URL of the [analyse service](../analyse/), e.g. `http://analyse:8770`. Turns on the *Analyse* section (tracking dots); unset hides it and `/api/analyse/*` answers 404. See [`docs/ANALYSE.md`](../docs/ANALYSE.md). |
-| `SRGB_ICC` | Debian `colord-data` path | sRGB profile used for the colour transform |
+| `SRGB_ICC` | colord's `sRGB.icc` (in the image) | sRGB profile used for the colour transform |
 | `DEVICE_ICC` | `assets/dell3115cn.icm` | The scanner's colour profile (Dell's; not included, see [`assets/README.md`](assets/README.md)). Without it colour scans have a magenta cast; the log warns at startup. |
 
 **Folder destinations** write inside the container: mount the target directory and use the container path in the
@@ -101,9 +101,11 @@ with a body of another type, gets 403; one without an Origin header (curl, scrip
 ```sh
 bun install
 bun test                                   # unit + integration tests (some skip without tesseract/ImageMagick)
-docker build --target test .               # full suite in the Debian image
+docker build --target test .               # full suite in the Alpine image
 # scanner simulator + dev server (see ../CLAUDE.md for the simulator command)
 SERVICE_URL=http://localhost:8765 DATA_DIR=./data bun --hot src/server/index.ts
+# the production bundle the image runs (see build.ts)
+bun build.ts && SERVICE_URL=http://localhost:8765 DATA_DIR=./data bun dist/start.js
 # with the Analyse section: run the analyse service (cd ../analyse && docker compose up --build) and add
 # ANALYSE_ENDPOINT=http://localhost:8770
 ```

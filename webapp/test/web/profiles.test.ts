@@ -2,7 +2,8 @@ import { expect, test } from "bun:test";
 import type { InputProfile, OutputProfile } from "../../src/web/types/api";
 import { DESTINATION_TYPES, SECRET_FIELDS } from "../../src/server/destinations/types";
 import { validateInput, validateOutput } from "../../src/server/profiles";
-import { DEST_FIELDS, NEW_INPUT, NEW_OUTPUT, filenameExamples, inputSummary, outputSummary, withMode } from "../../src/web/helpers/profiles";
+import { SMB_RETIRED } from "../../src/server/destinations/smb";
+import { DEST_FIELDS, NEW_INPUT, NEW_OUTPUT, destLabel, destOptions, filenameExamples, inputSummary, outputSummary, withMode } from "../../src/web/helpers/profiles";
 
 const filter = { preset: "none", threshold: 160, brightness: 0, contrast: 0, autoCrop: false, deskew: false } as const;
 const profile = (over: Partial<InputProfile>): InputProfile =>
@@ -19,8 +20,15 @@ test("withMode drops 16-bit when leaving colour", () => {
 });
 
 test("outputSummary shows the format and the destination", () => {
-  const p = { id: 2, name: "Archive", format: "pdf_multi", jpegQuality: 85, filenameTemplate: "x", destination: { type: "smb", config: {} } } as OutputProfile;
-  expect(outputSummary(p)).toBe("One multi-page PDF → SMB share");
+  const p = { id: 2, name: "Archive", format: "pdf_multi", jpegQuality: 85, filenameTemplate: "x", destination: { type: "sftp", config: {} } } as OutputProfile;
+  expect(outputSummary(p)).toBe("One multi-page PDF → SFTP (SSH)");
+});
+
+test("retired destinations are offered only to a profile that still uses one, and say so", () => {
+  const retired = { smb: SMB_RETIRED };
+  expect(destOptions("download", retired).map(([t]) => t)).toEqual(["download", "folder", "sftp", "ftp", "paperless", "papra", "webhook"]);
+  expect(destOptions("smb", retired).at(-1)).toEqual(["smb", "SMB share (no longer supported)"]);
+  expect(destLabel("sftp", retired)).toBe("SFTP (SSH)");
 });
 
 test("filenameExamples shows the first two names, or the default name", () => {
@@ -31,7 +39,7 @@ test("filenameExamples shows the first two names, or the default name", () => {
 
 test("the form has fields for every destination the server knows, and masks the same secrets", () => {
   expect(Object.keys(DEST_FIELDS).sort()).toEqual([...DESTINATION_TYPES].sort());
-  for (const type of DESTINATION_TYPES) {
+  for (const type of DESTINATION_TYPES.filter((t) => t !== "smb")) {
     const secrets = DEST_FIELDS[type].filter((f) => f.kind === "secret").map((f) => f.key);
     expect([type, secrets.sort()]).toEqual([type, [...SECRET_FIELDS[type]].sort()]);
   }

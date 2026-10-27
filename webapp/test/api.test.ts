@@ -1,16 +1,17 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import { z } from "@hono/zod-openapi";
 import { hc } from "hono/client";
 import { HTTPException } from "hono/http-exception";
 import { AnalyseClient } from "../src/server/analyse-client";
 import { isUuid } from "../src/server/db";
+import { SMB_RETIRED } from "../src/server/destinations/smb";
 import { createApp, type AppType } from "../src/server/http/app";
 import { errorResponse } from "../src/server/http/errors";
 import { exact } from "../src/server/http/schemas";
 import { magickAvailable } from "../src/server/pipeline/magick";
 import { ScanRepo } from "../src/server/repos/scan-repo";
 import { makeColourPnm } from "./fake-service";
-import { scanInsert, withoutDeviceIcc } from "./helpers";
+import { fakeFingerprint, scanInsert, withoutDeviceIcc } from "./helpers";
 import { makeHarness, type Harness } from "./scan-harness";
 
 let h: Harness;
@@ -666,7 +667,37 @@ test("ids sent as digit strings are accepted like integers; other strings stay 4
 
 test("GET /api/features reports analyse off without a client and on with one", async () => {
   const { call } = await setup();
-  expect((await call("GET", "/api/features")).body).toEqual({ analyse: false });
+  expect((await call("GET", "/api/features")).body).toMatchObject({ analyse: false });
   h.services.analyse = new AnalyseClient("http://analyse.invalid");
-  expect((await call("GET", "/api/features")).body).toEqual({ analyse: true });
+  expect((await call("GET", "/api/features")).body).toMatchObject({ analyse: true });
+});
+
+test("SFTP host keys: read and forget the one trusted for host:port", async () => {
+  const { call } = await setup();
+  const services = h.services;
+  expect((await call("GET", "/api/host-keys?host=nas.example&port=2222")).status).toBe(404);
+  services.hostKeys.set("nas.example", 2222, fakeFingerprint("a"));
+  const got = await call("GET", "/api/host-keys?host=nas.example&port=2222");
+  expect(got.status).toBe(200);
+  expect(got.body).toMatchObject({ host: "nas.example", port: 2222, fingerprint: fakeFingerprint("a") });
+  expect(typeof got.body.firstSeen).toBe("number");
+  expect((await call("GET", "/api/host-keys?host=nas.example")).status).toBe(404); // port 22 is another server
+  expect((await call("GET", "/api/host-keys?host=nas.example&port=0")).status).toBe(400);
+  expect((await call("DELETE", "/api/host-keys?host=nas.example&port=2222")).status).toBe(204);
+  expect(services.hostKeys.get("nas.example", 2222)).toBeNull();
+});
+
+test("features list the retired destinations with their message", async () => {
+  const { call } = await setup();
+  expect((await call("GET", "/api/features")).body.retiredDestinations).toEqual({ smb: SMB_RETIRED });
+});
+
+test("destination tests pass a destination's note on", async () => {
+  const { call } = await setup();
+  const spy = spyOn(h.services.profiles, "testDestination").mockResolvedValue({ note: "left a file" });
+  try {
+    expect((await call("POST", "/api/destinations/test", { type: "folder", config: { path: h.outDir } })).body).toEqual({ ok: true, note: "left a file" });
+  } finally {
+    spy.mockRestore();
+  }
 });

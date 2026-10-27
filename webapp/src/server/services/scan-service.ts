@@ -1,7 +1,6 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
-import { getDestination } from "../destinations";
 import { DeliveryError, ValidationError } from "../destinations/types";
 import type { LiveHub } from "../live";
 import type { DownloadFile } from "../downloads";
@@ -635,7 +634,7 @@ export class ScanService {
       try {
         if (!profileRow) throw new DeliveryError(`Output profile ${outputId} no longer exists`);
         const profile = this.profiles.getOutputForUse(outputId);
-        const dest = getDestination(profile.destination.type);
+        const dest = this.profiles.destination(profile.destination.type);
         const cfg = dest.parse(profile.destination.config);
         const input = JSON.parse(r.input_profile) as InputProfile;
         const pages = this.pageRows(id).map((p) => ({

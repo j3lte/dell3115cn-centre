@@ -14,6 +14,7 @@ export const keys = {
   settings: ["settings"],
   printer: ["printer"],
   features: ["features"],
+  hostKey: (host: string, port: number) => ["host-keys", host.toLowerCase(), port],
   history: ["scans", "history"],
   scan: (id: string) => ["scans", id],
   deda: ["analyse", "deda"],

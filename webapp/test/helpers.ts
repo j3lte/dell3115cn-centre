@@ -3,6 +3,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir as osTmpdir } from "node:os";
 import { join } from "node:path";
 import type { Database } from "bun:sqlite";
+import type { HostKeyStore } from "../src/server/destinations/sftp";
 import type { ScanInsert } from "../src/server/repos/scan-repo";
 
 export function tmpdir(): string {
@@ -39,4 +40,24 @@ export function withoutDeviceIcc(): void {
     if (before === undefined) delete process.env.DEVICE_ICC;
     else process.env.DEVICE_ICC = before;
   });
+}
+
+/** A well-formed SFTP host key fingerprint made of one repeated character, e.g. `fakeFingerprint("a")`. */
+export function fakeFingerprint(ch: string): string {
+  return `SHA256:${ch.repeat(43)}`;
+}
+
+/** An in-memory SFTP host key store (the app's is `HostKeyRepo`). */
+export function memoryHostKeys(): HostKeyStore & { keys: Map<string, string> } {
+  const keys = new Map<string, string>();
+  const k = (host: string, port: number) => `${host.toLowerCase()}:${port}`;
+  return {
+    keys,
+    get: (host, port) => (keys.has(k(host, port)) ? { fingerprint: keys.get(k(host, port))!, firstSeen: 0 } : null),
+    set: (host, port, fp) => {
+      if (!keys.has(k(host, port))) keys.set(k(host, port), fp);
+      return keys.get(k(host, port))!;
+    },
+    forget: (host, port) => void keys.delete(k(host, port)),
+  };
 }

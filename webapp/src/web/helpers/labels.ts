@@ -20,11 +20,12 @@ export type DestType = OutputProfile["destination"]["type"];
 export const DEST_LABEL: Record<DestType, string> = {
   download: "Download",
   folder: "Folder",
-  smb: "SMB share",
+  sftp: "SFTP (SSH)",
   ftp: "FTP",
   paperless: "Paperless-ngx",
   papra: "Papra",
   webhook: "Webhook",
+  smb: "SMB share",
 };
 
 export const PRESET_LABELS: Record<Filter["preset"], string> = {

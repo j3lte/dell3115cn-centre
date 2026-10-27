@@ -6,6 +6,8 @@ import { ValidationError, validateInput, validateOutput } from "../src/server/pr
 import { ProfileRepo } from "../src/server/repos/profile-repo";
 import { ProfileService } from "../src/server/services/profile-service";
 import { SecretBox, SecretError } from "../src/server/secrets";
+import { createDestinations } from "../src/server/destinations";
+import { memoryHostKeys } from "./helpers";
 
 let db: Database;
 let repo: ProfileRepo;
@@ -15,7 +17,7 @@ const boxA = new SecretBox("secret-a");
 beforeEach(() => {
   db = openDb(":memory:");
   repo = new ProfileRepo(db, boxA);
-  service = new ProfileService(repo);
+  service = new ProfileService(repo, createDestinations({ hostKeys: memoryHostKeys() }));
 });
 
 const paperless = (token: string) => ({

@@ -509,3 +509,12 @@ test("a link to a delivered file whose scan was deleted answers 410", async () =
   const res = await fetch(links.files[0].url);
   expect(res.status).toBe(410);
 });
+
+test("forget_sftp_host forgets the SFTP host key trusted for host:port", async () => {
+  const { connect } = await setup();
+  h.services.hostKeys.set("nas.example", 22, `SHA256:${"a".repeat(43)}`);
+  const c = await connect();
+  const r = await c.callTool({ name: "forget_sftp_host", arguments: { host: "nas.example" } });
+  expect(r.isError).toBeFalsy();
+  expect(h.services.hostKeys.get("nas.example", 22)).toBeNull();
+});

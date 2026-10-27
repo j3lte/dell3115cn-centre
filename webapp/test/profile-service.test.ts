@@ -1,15 +1,19 @@
 import { beforeEach, expect, test } from "bun:test";
+import { createDestinations } from "../src/server/destinations";
 import { openDb } from "../src/server/db";
 import { ProfileRepo } from "../src/server/repos/profile-repo";
 import { ValidationError } from "../src/server/profiles";
 import { NotFound } from "../src/server/services/errors";
 import { SecretBox } from "../src/server/secrets";
 import { ProfileService } from "../src/server/services/profile-service";
+import { memoryHostKeys } from "./helpers";
+
+const destinations = createDestinations({ hostKeys: memoryHostKeys() });
 
 let service: ProfileService;
 
 beforeEach(() => {
-  service = new ProfileService(new ProfileRepo(openDb(":memory:"), new SecretBox("secret-a")));
+  service = new ProfileService(new ProfileRepo(openDb(":memory:"), new SecretBox("secret-a")), destinations);
 });
 
 const input = { name: "BW", source: "adf" as const, mode: "lineart" as const, dpi: 200 as const, paper: "legal" as const, autoOrient: false, threshold: 140 };
@@ -100,4 +104,55 @@ test("addCommon twice adds nothing the second time", () => {
 test("testOutput and getOutputForUse on a missing id reject with ValidationError", async () => {
   await expect(service.testOutput(99999)).rejects.toThrow(ValidationError);
   expect(() => service.getOutputForUse(99999)).toThrow("Output profile 99999 not found");
+});
+
+// ---- retired SMB (its refusals are tested in destinations.test.ts)
+
+function withSmbRow(): { service: ProfileService; id: number } {
+  const db = openDb(":memory:");
+  const box = new SecretBox("secret-a");
+  const config = JSON.stringify({ server: "nas.example", share: "scans", path: "", username: "u", password: box.seal("pw") });
+  const id = db
+    .query<{ id: number }, [string]>(
+      "INSERT INTO output_profiles (name, format, jpeg_quality, filename_template, destination_type, destination_config) VALUES ('Old NAS', 'pdf_multi', 80, '{date}', 'smb', ?) RETURNING id",
+    )
+    .get(config)!.id;
+  return { service: new ProfileService(new ProfileRepo(db, box), destinations), id };
+}
+
+test("an SMB profile from an older version still loads (secret masked) and can be switched to another destination", () => {
+  const { service: s, id } = withSmbRow();
+  const p = s.getOutput(id);
+  expect(p.destination).toEqual({ type: "smb", config: { server: "nas.example", share: "scans", path: "", username: "u", password: "••••" } });
+  expect(s.listOutput().some((x) => x.id === id && x.destination.type === "smb")).toBe(true);
+  const switched = s.saveOutput({ ...p, destination: { type: "folder", config: { path: "/export" } } }, "targets");
+  expect(switched.destination.type).toBe("folder");
+});
+
+test('saveOutput with scope "targets" refuses a masked secret when the port or user name changes (FTP and SFTP)', () => {
+  const profile = (type: "ftp" | "sftp") => ({
+    name: type,
+    format: "pdf_multi" as const,
+    jpegQuality: 80,
+    filenameTemplate: "scan",
+    destination: { type, config: { host: "files.example", port: 2121, username: "u", password: "pw" } },
+  });
+  for (const type of ["ftp", "sftp"] as const) {
+    const saved = service.saveOutput(profile(type), "targets");
+    const moved = (over: Record<string, unknown>) => ({ ...saved, destination: { type, config: { ...saved.destination.config, ...over } } });
+    expect(() => service.saveOutput(moved({ port: 2222 }), "targets")).toThrow("The destination changed (port)");
+    expect(() => service.saveOutput(moved({ username: "other" }), "targets")).toThrow("The destination changed (username)");
+    expect(service.saveOutput(moved({ path: "elsewhere" }), "targets").destination.config.path).toBe("elsewhere");
+  }
+});
+
+test("Test passes on a note from the destination (e.g. SFTP's test file it couldn't remove)", async () => {
+  const withNote = Object.assign(
+    (t: Parameters<typeof destinations>[0]) => (t === "folder" ? { ...destinations("folder"), test: async () => ({ note: "left a file" }) } : destinations(t)),
+    { retired: destinations.retired },
+  );
+  const noted = new ProfileService(new ProfileRepo(openDb(":memory:"), new SecretBox("secret-a")), withNote);
+  expect(await noted.testDestination("folder", { path: "/x" }, undefined, "targets")).toEqual({ note: "left a file" });
+  const saved = noted.saveOutput({ name: "F", format: "pdf_multi", jpegQuality: 80, filenameTemplate: "x", destination: { type: "folder", config: { path: "/x" } } }, "targets");
+  expect(await noted.testOutput(saved.id)).toEqual({ note: "left a file" });
 });

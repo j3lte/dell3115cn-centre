@@ -13,3 +13,6 @@
 - [ ] If phones send raster (URF/PWG) at 600 dpi, advertise 300 dpi rasters instead.
 - [ ] Authentication for the web UI and administration (deferred; the MCP key is visible to anyone who can open Settings).
 - [ ] MCP tool for the DEDA tracking-dot analysis.
+- [ ] Remove the retired SMB destination type completely in a later version (its `retired` smb entry, label, schema
+      enum value and the read-only support for old SMB profiles), once existing installs have had a release to switch
+      their SMB profiles to another destination.

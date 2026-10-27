@@ -1,6 +1,6 @@
 /**
- * ImageMagick binary: `magick` (IM7, e.g. Homebrew) when present, else `convert` (IM6, Debian image).
- * Both accept the same convert-style arguments.
+ * ImageMagick binary: `magick` (IM7, e.g. Homebrew) when present, else `convert` (IM6).
+ * Both accept the same convert-style arguments. The Docker image (Alpine) has IM7.
  */
 export function magickCommand(): string[] {
   if (Bun.which("magick")) return ["magick"];

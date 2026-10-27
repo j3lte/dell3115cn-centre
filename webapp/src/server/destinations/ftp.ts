@@ -1,5 +1,5 @@
 import { Client } from "basic-ftp";
-import { asObject, candidateName, cannotReach, DeliveryError, oneAtATime, str, ValidationError, type Destination } from "./types";
+import { asObject, candidateName, cannotReach, DeliveryError, hostPort, isNetworkError, oneAtATime, str, type Destination } from "./types";
 
 export type FtpConfig = { host: string; port: number; path: string; username: string; password: string; secure: boolean };
 
@@ -12,12 +12,9 @@ export interface FtpClientLike {
   close(): void;
 }
 
-const NETWORK_CODES = new Set(["ECONNREFUSED", "ENOTFOUND", "EHOSTUNREACH", "ENETUNREACH", "ETIMEDOUT", "ECONNRESET", "EAI_AGAIN"]);
-
 function ftpError(host: string, e: unknown): DeliveryError {
   if (e instanceof DeliveryError) return e;
-  const code = (e as { code?: unknown }).code;
-  if (typeof code === "string" && NETWORK_CODES.has(code)) return cannotReach(host, e);
+  if (isNetworkError(e)) return cannotReach(host, e);
   return new DeliveryError(`FTP: ${(e as Error).message ?? String(e)}`);
 }
 
@@ -39,13 +36,8 @@ export function createFtpDestination(factory: () => FtpClientLike = () => new Cl
     type: "ftp",
     parse(config) {
       const o = asObject(config);
-      const port = o.port === undefined || o.port === null || o.port === "" ? 21 : Number(o.port);
-      if (!Number.isInteger(port) || port < 1 || port > 65535) throw new ValidationError("Port must be 1-65535");
-      const host = str(o, "host", "Host");
-      if (!/^[A-Za-z0-9.:_-]+$/.test(host)) throw new ValidationError("Host must be a host name or IP address");
       return {
-        host,
-        port,
+        ...hostPort(o, 21),
         path: str(o, "path", "Path", false) || "/",
         username: str(o, "username", "User name", false) || "anonymous",
         password: typeof o.password === "string" ? o.password : "",

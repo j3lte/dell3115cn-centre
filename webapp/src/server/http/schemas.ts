@@ -1,4 +1,5 @@
 import { z } from "@hono/zod-openapi";
+import { DESTINATION_TYPES, type DestinationType } from "../destinations/types";
 import type { Filter } from "../pipeline/filters";
 import type { PrinterView, Supply } from "../printer";
 import type { WhiteCalibration } from "../pipeline/white";
@@ -34,7 +35,16 @@ export const ScannerStatusSchema = exact<ScannerStatus>()(
     .openapi("ScannerStatus"),
 );
 
-export const FeaturesSchema = exact<{ analyse: boolean }>()(z.object({ analyse: z.boolean() }).openapi("Features"));
+export const FeaturesSchema = exact<{ analyse: boolean; retiredDestinations: Record<string, string> }>()(
+  z
+    .object({
+      analyse: z.boolean(),
+      retiredDestinations: z
+        .record(z.string(), z.string())
+        .meta({ description: "Destination types no longer offered, with the message their profiles show", example: { smb: "SMB is no longer supported; choose another destination" } }),
+    })
+    .openapi("Features"),
+);
 
 const SupplySchema = exact<Supply>()(
   z.object({ name: z.string(), color: z.string(), type: z.string(), level: z.number().nullable(), low: z.boolean() }).openapi("Supply"),
@@ -108,7 +118,7 @@ export const InputProfileDraftSchema = exact<InputProfileDraft>()(
 );
 
 const destinationFields = {
-  type: z.enum(["download", "folder", "smb", "ftp", "paperless", "papra", "webhook"]),
+  type: z.enum(DESTINATION_TYPES as [DestinationType, ...DestinationType[]]),
   config: z.record(z.string(), z.unknown()),
 };
 
@@ -127,6 +137,20 @@ export const OutputProfileSchema = exact<OutputProfile>()(
 export const OutputProfileDraftSchema = exact<OutputProfileDraft>()(
   z.object({ id: z.number().optional(), ...outputFields, needsCredentials: z.boolean().optional() }).openapi("OutputProfileDraft"),
 );
+
+export const HostKeyQuery = z.object({
+  host: z.string().min(1).openapi({ description: "The SFTP host as written in the profile", example: "nas.local" }),
+  port: z.coerce.number<string>().int().min(1).max(65535).optional().default(22).openapi({ description: "Default 22", example: "22" }),
+});
+
+export const HostKeySchema = z
+  .object({
+    host: z.string(),
+    port: z.number(),
+    fingerprint: z.string().meta({ description: "OpenSSH style, SHA256:…", example: "SHA256:G6Ay+Ss2O8cBtjvRbXcsj1SFZBpjaumbNWpipquAQSg" }),
+    firstSeen: z.number().meta({ description: "When it was first trusted (ms since the epoch)" }),
+  })
+  .openapi("HostKey");
 
 export const DestinationTestSchema = exact<{ type: string; config?: Record<string, unknown>; id?: number | null }>()(
   z
