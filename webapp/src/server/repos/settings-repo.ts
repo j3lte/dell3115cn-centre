@@ -1,6 +1,9 @@
 import type { Database } from "bun:sqlite";
 import { SETTING_KEYS, type AppSettings } from "../db";
 
+/** Keys whose stored null means "off" although the default is not null; elsewhere a stored null reads as the default. */
+const NULL_IS_OFF = new Set<keyof AppSettings>(["printerWakeHours"]);
+
 /** The `settings` key/value table: one JSON value per `AppSettings` key. SQL only; rules live in `SettingsService`. */
 export class SettingsRepo {
   constructor(private readonly db: Database) {}
@@ -18,7 +21,9 @@ export class SettingsRepo {
     };
     for (const k of SETTING_KEYS) {
       const row = this.db.query<{ value: string }, [string]>("SELECT value FROM settings WHERE key = ?").get(k);
-      if (row) (out as Record<string, unknown>)[k] = JSON.parse(row.value); // null is a value ("off"), SettingsService validates
+      if (!row) continue;
+      const v = JSON.parse(row.value);
+      if (v !== null || NULL_IS_OFF.has(k)) (out as Record<string, unknown>)[k] = v;
     }
     return out;
   }

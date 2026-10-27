@@ -18,23 +18,25 @@ export function usePrinter(): Printer {
     refetchInterval: 60_000,
     refetchIntervalInBackground: true, // keeps polling in a hidden tab, like the old timer
   });
-  const refresh = useMutation({
-    mutationFn: (ifStale: boolean): Promise<PrinterView> =>
-      unwrap(client.api.printer.refresh.$post({ query: ifStale ? { ifStale: "true" } : {} })),
-    onSuccess: (v) => queryClient.setQueryData(keys.printer, v),
+  const onSuccess = (v: PrinterView) => queryClient.setQueryData(keys.printer, v);
+  const refresh = useMutation({ mutationFn: (): Promise<PrinterView> => unwrap(client.api.printer.refresh.$post({ query: {} })), onSuccess });
+  // Separate from `refresh`: it runs on every return to the tab and mostly answers at once, so it doesn't drive `checking`.
+  const { mutate: wakeIfStale } = useMutation({
+    mutationFn: (): Promise<PrinterView> => unwrap(client.api.printer.refresh.$post({ query: { ifStale: "true" } })),
+    onSuccess,
   });
-  const { mutate, mutateAsync } = refresh;
+  const { mutateAsync } = refresh;
   useEffect(() => {
     const opened = () => {
-      if (document.visibilityState === "visible") mutate(true);
+      if (document.visibilityState === "visible") wakeIfStale();
     };
     opened();
     document.addEventListener("visibilitychange", opened);
     return () => document.removeEventListener("visibilitychange", opened);
-  }, [mutate]);
+  }, [wakeIfStale]);
   const check = useCallback(
     () =>
-      mutateAsync(false).then(
+      mutateAsync().then(
         () => {},
         () => {}, // the regular poll shows the error state
       ),

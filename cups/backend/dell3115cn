@@ -5,7 +5,8 @@
 # printer). Nothing sends refresh jobs on a timer; the web app sends one when it is opened and the state is old.
 #
 # Device URI: dell3115cn:usb://Dell/MFP%20Laser%203115cn?serial=<serial>&interface=1
-# A job titled "supply-refresh" only updates the levels; nothing is sent to the printer.
+# A job titled "supply-refresh" only updates the levels: its data is not sent to the printer and nothing is printed,
+# but the page-count query wakes the printer (warm-up noise).
 # Install as root, mode 0700, so CUPS runs it (and the usb backend) as root.
 
 SUPPLIES=/usr/local/lib/dell3115cn/dell3115cn-supplies.py

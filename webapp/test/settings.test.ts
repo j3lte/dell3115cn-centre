@@ -75,6 +75,12 @@ test("update validates printerWakeHours: whole hours 1-720, or null for never", 
   expect(service.update({ printerWakeHours: null }, { allowMcp: false }).printerWakeHours).toBeNull();
 });
 
+test("a stored null reads as the default, except for printerWakeHours where it means never", () => {
+  const { repo } = make();
+  db.run("INSERT INTO settings (key, value) VALUES ('whiteBalance', 'null'), ('mcpShelfLifeMinutes', 'null'), ('printerWakeHours', 'null')");
+  expect(repo.read()).toMatchObject({ whiteBalance: {}, mcpShelfLifeMinutes: 60, printerWakeHours: null });
+});
+
 test("update checks that button profiles exist and merges per panel format", () => {
   const { service } = make({ inputs: [1, 3], outputs: [1, 2] });
   expect(() => service.update({ buttonInputProfileId: 9 }, { allowMcp: false })).toThrow(NotFound);

@@ -30,7 +30,7 @@ export function ToggleNumberSetting({ settings, save, setting, title, label, hin
   useEffect(() => {
     if (current) setValue(String(current));
   }, [current]);
-  const number = () => Math.max(1, Math.round(Number(value)) || fallback);
+  const number = () => Math.min(max ?? Infinity, Math.max(1, Math.round(Number(value)) || fallback));
   return (
     <section className="card">
       <CardTitle>{title}</CardTitle>

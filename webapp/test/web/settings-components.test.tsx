@@ -257,6 +257,17 @@ describe("PrinterWakeSetting", () => {
     expect(save).toHaveBeenCalledTimes(1);
     expect(hours.validity.rangeOverflow).toBe(true);
   });
+
+  test("PrinterWakeSetting: switching it on with too many hours in the field saves 720", async () => {
+    const save = saver();
+    const { rerender } = renderWithQuery(<PrinterWakeSetting settings={settingsOf()} save={save} />);
+    const hours = screen.getByRole("spinbutton", { name: "When the last check is older than (hours)" });
+    await user.clear(hours);
+    await user.type(hours, "1000");
+    rerender(<PrinterWakeSetting settings={settingsOf({ printerWakeHours: null })} save={save} />);
+    await user.click(screen.getByRole("switch", { name: /Wake the printer when the app is opened/ }));
+    expect(save).toHaveBeenLastCalledWith({ printerWakeHours: 720 }, "Printer wake-up");
+  });
 });
 
 describe("PrinterPage", () => {

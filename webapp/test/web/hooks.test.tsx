@@ -422,7 +422,7 @@ test("usePrinter asks for a refresh-if-stale when the app opens and when the tab
   const { result } = renderHook(() => usePrinter(), { wrapper: fixedWrapper() });
   await waitFor(() => expect(stale()).toHaveLength(1));
   expect(new URL(stale()[0]!.url).searchParams.get("ifStale")).toBe("true");
-  await waitFor(() => expect(result.current.checking).toBe(false));
+  expect(result.current.checking).toBe(false); // only Check now shows "Checking…"
   const visibility = (state: DocumentVisibilityState) => {
     Object.defineProperty(document, "visibilityState", { value: state, configurable: true });
     act(() => void document.dispatchEvent(new Event("visibilitychange")));
