@@ -128,3 +128,31 @@ test("an SMB profile from an older version still loads (secret masked) and can b
   const switched = s.saveOutput({ ...p, destination: { type: "folder", config: { path: "/export" } } }, "targets");
   expect(switched.destination.type).toBe("folder");
 });
+
+test('saveOutput with scope "targets" refuses a masked secret when the port or user name changes (FTP and SFTP)', () => {
+  const profile = (type: "ftp" | "sftp") => ({
+    name: type,
+    format: "pdf_multi" as const,
+    jpegQuality: 80,
+    filenameTemplate: "scan",
+    destination: { type, config: { host: "files.example", port: 2121, username: "u", password: "pw" } },
+  });
+  for (const type of ["ftp", "sftp"] as const) {
+    const saved = service.saveOutput(profile(type), "targets");
+    const moved = (over: Record<string, unknown>) => ({ ...saved, destination: { type, config: { ...saved.destination.config, ...over } } });
+    expect(() => service.saveOutput(moved({ port: 2222 }), "targets")).toThrow("The destination changed (port)");
+    expect(() => service.saveOutput(moved({ username: "other" }), "targets")).toThrow("The destination changed (username)");
+    expect(service.saveOutput(moved({ path: "elsewhere" }), "targets").destination.config.path).toBe("elsewhere");
+  }
+});
+
+test("Test passes on a note from the destination (e.g. SFTP's test file it couldn't remove)", async () => {
+  const withNote = Object.assign(
+    (t: Parameters<typeof destinations>[0]) => (t === "folder" ? { ...destinations("folder"), test: async () => ({ note: "left a file" }) } : destinations(t)),
+    { retired: destinations.retired },
+  );
+  const noted = new ProfileService(new ProfileRepo(openDb(":memory:"), new SecretBox("secret-a")), withNote);
+  expect(await noted.testDestination("folder", { path: "/x" }, undefined, "targets")).toEqual({ note: "left a file" });
+  const saved = noted.saveOutput({ name: "F", format: "pdf_multi", jpegQuality: 80, filenameTemplate: "x", destination: { type: "folder", config: { path: "/x" } } }, "targets");
+  expect(await noted.testOutput(saved.id)).toEqual({ note: "left a file" });
+});

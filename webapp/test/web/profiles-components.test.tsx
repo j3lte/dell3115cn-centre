@@ -167,6 +167,31 @@ describe("forms", () => {
     expect(stub.calls.map(endpoint)).toContain("DELETE /api/host-keys");
   });
 
+  test("HostKeyField says when the stored key can't be read, and still offers to forget it", async () => {
+    stubFetch(() => Response.json({ error: "internal", message: "boom" }, { status: 500 }));
+    renderWithQuery(<HostKeyField host="nas.example" port={22} />);
+    expect(await screen.findByText(/Couldn't read the stored host key: boom/)).toBeTruthy();
+    expect(screen.queryByText(/Not stored yet/)).toBeNull();
+    expect(screen.getByRole("button", { name: "Forget host key" })).toBeTruthy();
+  });
+
+  test("the host key is looked up once the host has been typed, not on every keystroke", async () => {
+    const stub = stubFetch((req) => (path(req) === "/api/features" ? Response.json(features) : Response.json({ error: "not_found", message: "none" }, { status: 404 })));
+    renderWithQuery(<OutputProfileForm profile={null} />);
+    await user.selectOptions(screen.getByRole("combobox", { name: "Destination" }), "sftp");
+    await user.type(screen.getByLabelText("Host"), "nas.example");
+    expect(await screen.findByText(/Not stored yet/, undefined, { timeout: 2000 })).toBeTruthy();
+    const lookups = stub.calls.filter((r) => path(r) === "/api/host-keys").map((r) => new URL(r.url).searchParams.get("host"));
+    expect(lookups).toEqual(["nas.example"]);
+  });
+
+  test("a Test that works with a note shows the note", async () => {
+    stubFetch((req) => (path(req) === "/api/destinations/test" ? Response.json({ ok: true, note: "Remove the test file yourself." }) : Response.json(features)));
+    renderWithQuery(<OutputProfileForm profile={archive} />);
+    await user.click(screen.getByRole("button", { name: "Test" }));
+    expect(await screen.findByText("✓ Connection works. Remove the test file yourself.")).toBeTruthy();
+  });
+
   test("a Test of an SFTP destination shows the host key it trusted", async () => {
     const server = {
       ...archive,

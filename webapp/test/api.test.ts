@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import { z } from "@hono/zod-openapi";
 import { hc } from "hono/client";
 import { HTTPException } from "hono/http-exception";
@@ -690,4 +690,14 @@ test("SFTP host keys: read and forget the one trusted for host:port", async () =
 test("features list the retired destinations with their message", async () => {
   const { call } = await setup();
   expect((await call("GET", "/api/features")).body.retiredDestinations).toEqual({ smb: SMB_RETIRED });
+});
+
+test("destination tests pass a destination's note on", async () => {
+  const { call } = await setup();
+  const spy = spyOn(h.services.profiles, "testDestination").mockResolvedValue({ note: "left a file" });
+  try {
+    expect((await call("POST", "/api/destinations/test", { type: "folder", config: { path: h.outDir } })).body).toEqual({ ok: true, note: "left a file" });
+  } finally {
+    spy.mockRestore();
+  }
 });

@@ -43,8 +43,8 @@ export interface Destination<C> {
   retired?: string;
   /** Validates an untrusted config (UI form); throws ValidationError. */
   parse(config: unknown): C;
-  /** Checks the settings work; throws DeliveryError. */
-  test(c: C): Promise<void>;
+  /** Checks the settings work; throws DeliveryError. A `note` is something the user should know although it works. */
+  test(c: C): Promise<{ note?: string } | void>;
   send(files: DeliveryFile[], c: C, meta: SendMeta): Promise<{ ref?: string }>;
 }
 

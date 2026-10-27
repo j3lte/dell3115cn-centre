@@ -20,8 +20,8 @@ export type TrustedHostKey = { fingerprint: string; firstSeen: number };
 /** Host keys trusted on first use, per server. */
 export interface HostKeyStore {
   get(host: string, port: number): TrustedHostKey | null;
-  /** Keeps a key that is already there. */
-  set(host: string, port: number, fingerprint: string): void;
+  /** Stores the key unless one is there already; returns the key now stored (another one if a connection beat us). */
+  set(host: string, port: number, fingerprint: string): string;
   forget(host: string, port: number): void;
 }
 
@@ -126,16 +126,17 @@ export class Ssh2SftpClient implements SftpClientLike {
   }
 }
 
-/** Creates `remote` (never over an existing file) from a local file in WRITE_CHUNK pieces, WRITE_WINDOW at a time. */
-async function upload(client: SftpClientLike, localPath: string | null, remote: string): Promise<void> {
-  const handle = await client.create(remote);
+/**
+ * Fills a file created with `client.create` from a local file in WRITE_CHUNK pieces, WRITE_WINDOW at a time, and
+ * closes it. On failure the partial file is removed (best effort) and the first error is thrown, not a later one.
+ */
+async function fill(client: SftpClientLike, handle: Buffer, localPath: string, remote: string): Promise<void> {
+  let failed: { e: unknown } | null = null;
   try {
-    if (localPath === null) return;
     const file = await open(localPath, "r");
     try {
       const size = (await file.stat()).size;
       const pending = new Set<Promise<void>>();
-      let failed: { e: unknown } | null = null;
       for (let pos = 0; pos < size && !failed; pos += WRITE_CHUNK) {
         const buf = Buffer.allocUnsafe(Math.min(WRITE_CHUNK, size - pos));
         const { bytesRead } = await file.read(buf, 0, buf.length, pos);
@@ -147,12 +148,16 @@ async function upload(client: SftpClientLike, localPath: string | null, remote: 
         if (pending.size >= WRITE_WINDOW) await Promise.race(pending);
       }
       await Promise.all(pending);
-      if (failed) throw (failed as { e: unknown }).e;
     } finally {
       await file.close();
     }
-  } finally {
-    await client.closeFile(handle);
+  } catch (e) {
+    failed ??= { e };
+  }
+  await client.closeFile(handle).catch((e) => void (failed ??= { e }));
+  if (failed) {
+    await client.remove(remote).catch(() => {});
+    throw (failed as { e: unknown }).e;
   }
 }
 
@@ -163,6 +168,10 @@ function sftpError(c: SftpConfig, e: unknown): DeliveryError {
   if (err.level === "client-timeout") return cannotReach(c.host, { name: "TimeoutError" });
   if (err.level === "client-authentication") return new DeliveryError(`SFTP: login as ${c.username} failed (wrong password or key)`);
   return new DeliveryError(`SFTP: ${err.message ?? String(e)}`);
+}
+
+function changedKey(host: string, expected: string, got: string): DeliveryError {
+  return new DeliveryError(`Host key of ${host} changed (expected ${expected}, got ${got}). If this is expected, use "Forget host key" in the output profile.`);
 }
 
 export function createSftpDestination(hostKeys: HostKeyStore, factory: () => SftpClientLike = () => new Ssh2SftpClient()): Destination<SftpConfig> {
@@ -186,12 +195,11 @@ export function createSftpDestination(hostKeys: HostKeyStore, factory: () => Sft
           },
         })
         .catch((e) => {
-          if (!trusted || !seen || seen === trusted) throw e;
-          throw new DeliveryError(
-            `Host key of ${c.host} changed (expected ${trusted}, got ${seen}). If this is expected, use "Forget host key" in the output profile.`,
-          );
+          throw trusted && seen && seen !== trusted ? changedKey(c.host, trusted, seen) : e;
         });
-      if (!trusted && seen) hostKeys.set(c.host, c.port, seen);
+      // Stored after a successful login; a connection that raced us to the first key may have stored another one.
+      const stored = !trusted && seen ? hostKeys.set(c.host, c.port, seen) : seen;
+      if (stored !== seen) throw changedKey(c.host, stored, seen);
       return await fn(client);
     } catch (e) {
       throw sftpError(c, e);
@@ -232,13 +240,18 @@ export function createSftpDestination(hostKeys: HostKeyStore, factory: () => Sft
       return c;
     },
     async test(c) {
-      await withClient(c, async (client) => {
+      return withClient(c, async (client) => {
         await checkFolder(client, c.path);
         const probe = posix.join(c.path, `.centre-test-${randomBytes(6).toString("hex")}`);
-        await upload(client, null, probe).catch((e) => {
+        const handle = await client.create(probe).catch((e) => {
           throw new DeliveryError(`SFTP: cannot write in ${c.path}: ${(e as Error).message ?? String(e)}`);
         });
-        await client.remove(probe);
+        await client.closeFile(handle).catch(() => {});
+        try {
+          await client.remove(probe);
+        } catch {
+          return { note: `Writing works, but this user may not delete files: remove the test file ${probe} on the server yourself.` };
+        }
       });
     },
     async send(files, c) {
@@ -254,14 +267,15 @@ export function createSftpDestination(hostKeys: HostKeyStore, factory: () => Sft
               if (existing.has(name)) continue;
               existing.add(name);
               const remote = posix.join(c.path, name);
+              let handle: Buffer;
               try {
-                await upload(client, f.path, remote);
+                handle = await client.create(remote);
               } catch (e) {
-                // Taken by someone else since the listing: try the next number (a few times, so an upload that fails
-                // halfway and leaves its file behind doesn't loop).
+                // Taken by someone else since the listing: try the next number.
                 if (raced++ < 5 && (await client.exists(remote))) continue;
                 throw e;
               }
+              await fill(client, handle, f.path, remote);
               written.push(name);
               break;
             }

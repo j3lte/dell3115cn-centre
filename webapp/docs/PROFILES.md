@@ -94,7 +94,8 @@ a name that already exists there also gets `-2`, `-3`, ….
 ### Destinations
 
 Each destination has a **Test** button that checks the settings without sending a scan. Passwords, tokens and keys are
-encrypted with `APP_SECRET` and never shown again in full.
+encrypted with `APP_SECRET` and never shown again in full. A saved one is kept only while the destination stays where
+it was: after changing the URL, host, server, port or user name, enter the password, token or key again.
 
 | Destination | Settings | Notes |
 |---|---|---|
@@ -112,8 +113,10 @@ encrypted with `APP_SECRET` and never shown again in full.
   `-----END …-----`; the matching public key goes in `~/.ssh/authorized_keys` on the server) with its passphrase if
   it has one. A key that can't be read, or that needs a passphrase that's missing or wrong, is refused when saving.
 - **Folder**: relative to the login folder, or absolute (`/srv/scans`). It must already exist. **Test** checks that
-  it exists and that the user can write there, by creating and removing an empty `.centre-test-…` file.
-- **Host key (trust on first use)**: the first connection to a server (Test or delivery) stores its host key
+  it exists and that the user can write there, by creating and removing an empty `.centre-test-…` file. On an
+  upload-only server (the user may write but not delete) Test still passes, with a note naming the test file it had
+  to leave behind; remove that file yourself.
+- **Host key (trust on first use)**: the first successful login to a server (Test or delivery) stores its host key
   fingerprint (`SHA256:…`, as `ssh-keygen -lf` shows it) for that host and port, shared by every profile that uses
   them; the form shows it under *Host key*. From then on a server that shows another key is refused before logging
   in, with *Host key of … changed (expected …, got …)*. If the key really changed (server reinstalled, new host keys),

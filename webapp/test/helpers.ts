@@ -54,7 +54,10 @@ export function memoryHostKeys(): HostKeyStore & { keys: Map<string, string> } {
   return {
     keys,
     get: (host, port) => (keys.has(k(host, port)) ? { fingerprint: keys.get(k(host, port))!, firstSeen: 0 } : null),
-    set: (host, port, fp) => void (keys.has(k(host, port)) || keys.set(k(host, port), fp)),
+    set: (host, port, fp) => {
+      if (!keys.has(k(host, port))) keys.set(k(host, port), fp);
+      return keys.get(k(host, port))!;
+    },
     forget: (host, port) => void keys.delete(k(host, port)),
   };
 }

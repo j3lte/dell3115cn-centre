@@ -15,11 +15,12 @@ export class HostKeyRepo implements HostKeyStore {
     return r ? { fingerprint: r.fingerprint, firstSeen: r.first_seen } : null;
   }
 
-  /** Keeps a key that is already there. */
-  set(host: string, port: number, fingerprint: string): void {
+  /** Keeps a key that is already there; returns the key now stored. */
+  set(host: string, port: number, fingerprint: string): string {
     this.db
       .query("INSERT INTO host_keys (host, port, fingerprint, first_seen) VALUES (?, ?, ?, ?) ON CONFLICT (host, port) DO NOTHING")
       .run(host.toLowerCase(), port, fingerprint, this.clock());
+    return this.get(host, port)!.fingerprint;
   }
 
   forget(host: string, port: number): void {

@@ -226,7 +226,20 @@ describe("sftp", () => {
   const KEY_B = fakeFingerprint("B");
 
   type Fake = { log: string[]; files: Map<string, Buffer>; writes: { path: string; position: number; length: number }[]; client: () => SftpClientLike };
-  function fakeServer(o: { hostKey?: string; fail?: Error; files?: string[]; dirs?: string[]; readOnly?: boolean; listMisses?: boolean } = {}): Fake {
+  type FakeOptions = {
+    hostKey?: string;
+    fail?: Error;
+    files?: string[];
+    dirs?: string[];
+    readOnly?: boolean;
+    listMisses?: boolean;
+    /** write() fails from this offset on (disk full). */
+    failWriteAt?: number;
+    failClose?: boolean;
+    /** Upload-only server: remove() is refused. */
+    noDelete?: boolean;
+  };
+  function fakeServer(o: FakeOptions = {}): Fake {
     const dirs = new Set(o.dirs ?? [".", "scans"]);
     const open = new Map<string, string>(); // handle → path
     const fake: Fake = {
@@ -266,6 +279,7 @@ describe("sftp", () => {
         async write(handle, data, position) {
           const path = open.get(handle.toString())!;
           fake.writes.push({ path, position, length: data.length });
+          if (o.failWriteAt !== undefined && position >= o.failWriteAt) throw Object.assign(new Error("No space left on device"), { code: 4 });
           await Bun.sleep(Math.random() * 3); // writes in flight finish in any order
           const cur = fake.files.get(path)!;
           const next = Buffer.alloc(Math.max(cur.length, position + data.length));
@@ -275,8 +289,10 @@ describe("sftp", () => {
         },
         async closeFile(handle) {
           open.delete(handle.toString());
+          if (o.failClose) throw new Error("close failed");
         },
         async remove(path) {
+          if (o.noDelete) throw Object.assign(new Error("Permission denied"), { code: 3 });
           fake.files.delete(path);
           fake.log.push(`remove ${path}`);
         },
@@ -425,6 +441,48 @@ describe("sftp", () => {
     expect([...fake.files.keys()].sort()).toEqual(["scans/scan-2.pdf", "scans/scan.pdf"]);
   });
 
+  test("a write that fails halfway is reported as such, its partial file removed, and no other name tried", async () => {
+    const fake = fakeServer({ failWriteAt: WRITE_CHUNK });
+    const d = createSftpDestination(memoryHostKeys(), fake.client);
+    const [f] = outFiles(["big.bin"]);
+    writeFileSync(f!.path, randomBytes(WRITE_CHUNK * 3));
+    await expect(d.send([f!], d.parse(config), meta)).rejects.toThrow("SFTP: No space left on device");
+    expect(fake.log.filter((l) => l.startsWith("create "))).toEqual(["create scans/big.bin"]);
+    expect([...fake.files.keys()]).toEqual([]);
+  });
+
+  test("a failing close doesn't hide the write error that came first", async () => {
+    const fake = fakeServer({ failWriteAt: 0, failClose: true });
+    const d = createSftpDestination(memoryHostKeys(), fake.client);
+    await expect(d.send(outFiles(["a.pdf"]), d.parse(config), meta)).rejects.toThrow("SFTP: No space left on device");
+  });
+
+  test("on an upload-only server Test passes with a note naming the test file it couldn't remove", async () => {
+    const fake = fakeServer({ noDelete: true });
+    const d = createSftpDestination(memoryHostKeys(), fake.client);
+    const r = await d.test(d.parse(config));
+    const probe = [...fake.files.keys()][0]!;
+    expect(probe).toMatch(/^scans\/\.centre-test-[0-9a-f]+$/);
+    expect(r).toEqual({ note: `Writing works, but this user may not delete files: remove the test file ${probe} on the server yourself.` });
+  });
+
+  test("Test removes its test file even when closing it fails", async () => {
+    const fake = fakeServer({ failClose: true });
+    const d = createSftpDestination(memoryHostKeys(), fake.client);
+    await d.test(d.parse(config));
+    expect(fake.files.size).toBe(0);
+  });
+
+  test("two first connections that see different keys: the second is refused before uploading", async () => {
+    const keys = memoryHostKeys();
+    const racing = { ...keys, get: () => null }; // both connections looked before either stored
+    keys.set("files.example", 22, KEY_B); // the other connection won
+    const fake = fakeServer({ hostKey: KEY_A });
+    const d = createSftpDestination(racing, fake.client);
+    await expect(d.send(outFiles(["a.pdf"]), d.parse(config), meta)).rejects.toThrow(`Host key of files.example changed (expected ${KEY_B}, got ${KEY_A})`);
+    expect(fake.files.size).toBe(0);
+  });
+
   test("network and timeout errors", async () => {
     const refused = Object.assign(new Error("connect ECONNREFUSED 10.0.0.1:22"), { code: "ECONNREFUSED" });
     let d = createSftpDestination(memoryHostKeys(), fakeServer({ fail: refused }).client);
@@ -547,6 +605,10 @@ describe("real servers (optional)", () => {
     await d.test(c);
     await d.send(outFiles(["webapp-test.txt"]), c, meta);
   });
+});
+
+test("the registry lists its retired destinations with their message", () => {
+  expect(getDestination.retired).toEqual({ smb: SMB_RETIRED });
 });
 
 test("every destination type is registered", () => {
