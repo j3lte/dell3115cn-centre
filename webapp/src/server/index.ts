@@ -67,8 +67,9 @@ const app = createApp(services);
 const mcpOn = settings.ensureMcpKey().mcpEnabled;
 const mcp = mcpHandler({ services, downloads, dataDir: config.dataDir });
 
-// Bun closes a connection that is quiet for about 10 s. A preview, a scan sent to a slow destination or an assistant's
-// scan answers later than that, so requests to these routes have no idle timeout.
+// Bun closes a connection that is quiet for about 10 s; in Bun 1.4.4 that hits requests without a body (GET, or a POST
+// like Preview), and a preview or a download link that first builds its file answers later than that. So requests to
+// these routes have no idle timeout.
 const untimed =
   (handler: (req: Request) => Response | Promise<Response>) =>
   (req: Request, srv: { timeout(req: Request, seconds: number): void }): Response | Promise<Response> => {
