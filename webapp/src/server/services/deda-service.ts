@@ -164,6 +164,7 @@ export class DedaService {
       const tempId = r.source === "scan" ? r.scan_id : null;
       if (tempId) this.chain = this.chain.then(() => this.scans.remove(tempId).catch(() => {}));
     }
+    if (pending.length) log.info(`${pending.length} analysis(es) interrupted by the restart`);
     return pending.length;
   }
 
@@ -189,8 +190,8 @@ export class DedaService {
           if (!this.repo.get(id)) return; // removed while queued
           await work();
         } catch (e) {
-          if (!(e instanceof JobFailed || e instanceof AnalyseUnreachable || e instanceof AnalyseFailed)) log.error(`${id}:`, e);
-          log.warn(`${id} failed: ${message(e)}`);
+          if (e instanceof JobFailed || e instanceof AnalyseUnreachable || e instanceof AnalyseFailed) log.warn(`${id} failed: ${message(e)}`);
+          else log.error(`${id} failed:`, e);
           if (this.repo.get(id)) this.repo.update(id, { status: "failed", error: message(e) });
         }
       })

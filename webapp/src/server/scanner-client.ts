@@ -175,8 +175,9 @@ export class ScannerClient {
       else log.warn(`service unreachable: ${next.error ?? "no answer"}`);
       return;
     }
-    const pair = new Set([prev.printer, next.printer]);
-    if (next.service !== "connected" || prev.printer === next.printer || (pair.has("idle") && pair.has("scanning"))) return;
+    if (next.service !== "connected" || prev.printer === next.printer) return;
+    const scanEdge = (prev.printer === "idle" && next.printer === "scanning") || (prev.printer === "scanning" && next.printer === "idle");
+    if (scanEdge) return;
     (next.printer === "jammed" ? log.warn : log.info)(`printer ${next.printer ?? "unknown"}`);
   }
 

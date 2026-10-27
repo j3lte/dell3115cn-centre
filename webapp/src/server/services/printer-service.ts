@@ -22,8 +22,9 @@ export class PrinterService {
   /** A fresh state when the source can refresh (this wakes the printer), else the same as `get`. */
   refresh(): Promise<PrinterView> {
     this.lastWake = this.clock();
-    if (this.source?.refresh) log.info("reading supply levels (wakes the printer)");
-    return this.source?.refresh ? this.source.refresh() : this.get();
+    if (!this.source?.refresh) return this.get();
+    log.info("reading supply levels (wakes the printer)");
+    return this.source.refresh();
   }
 
   /**

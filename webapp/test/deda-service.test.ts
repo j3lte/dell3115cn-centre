@@ -282,12 +282,12 @@ describe("DEDA service", () => {
       return realGet.call(this, id);
     });
     const errors: string[] = [];
-    configureLog({ sink: (l) => void (l.includes(" ERROR ") && errors.push(l)) });
+    const restore = configureLog({ sink: (l) => void (l.includes(" ERROR ") && errors.push(l)) });
     try {
       await deda.idle();
     } finally {
       spy.mockRestore();
-      configureLog({ sink: (l) => process.stdout.write(`${l}\n`) });
+      restore();
     }
     expect(deda.get(second.id)!.status).toBe("done");
     expect(errors.length).toBeGreaterThan(0);

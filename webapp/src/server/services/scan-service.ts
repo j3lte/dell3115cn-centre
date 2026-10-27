@@ -619,7 +619,8 @@ export class ScanService {
     this.update(id, { status, problem, error, page_count: total });
     if (status === "failed") log.warn(`${id} failed: ${error}`);
     else if (status === "cancelled") log.info(`${id} cancelled`);
-    else (issues.length ? log.warn : log.info)(`${id} scanned ${b.received} page(s), ${status}${issues.length ? `: ${issues.join("; ")}` : ""}`);
+    else if (issues.length) log.warn(`${id} scanned ${b.received} page(s), ${status}: ${issues.join("; ")}`);
+    else log.info(`${id} scanned ${b.received} page(s), ${status}`);
     this.broadcast(id);
     if (status === "delivering" && r.output_profile_id !== null) await this.deliver(id, r.output_profile_id);
   }
@@ -662,8 +663,8 @@ export class ScanService {
         log.info(`${id} delivered to ${to}: ${files.length} file(s) in ${((performance.now() - t0) / 1000).toFixed(1)}s`);
       } catch (e) {
         const msg = e instanceof SecretError ? `${name}: stored credentials can't be decrypted — re-enter credentials` : message(e);
-        if (!(e instanceof DeliveryError || e instanceof SecretError || e instanceof ValidationError)) log.error(`delivery ${did} of scan ${id}:`, e);
-        log.warn(`${id} delivery to ${to} failed: ${msg}`);
+        if (e instanceof DeliveryError || e instanceof SecretError || e instanceof ValidationError) log.warn(`${id} delivery to ${to} failed: ${msg}`);
+        else log.error(`${id} delivery ${did} to ${to} failed:`, e);
         this.repo.markDeliveryFailed(did, msg, store());
         // A scan that was delivered once stays done; the failed resend shows as its own delivery row.
         const sentBefore = this.repo.hasSentDelivery(id);
@@ -970,6 +971,7 @@ export class ScanService {
     const cutoff = this.clock() - days * DAY_MS;
     const ids = this.repo.idsOlderThan(cutoff).filter((id) => !this.jobs.has(id) && !this.tasks.has(id));
     for (const id of ids) this.deleteNow(id);
+    if (ids.length) log.info(`removed ${ids.length} scan(s) older than ${days} days`);
     return ids.length;
   }
 

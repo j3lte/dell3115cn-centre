@@ -1,22 +1,22 @@
 import { afterEach, expect, test } from "bun:test";
-import { configureLog, logger, parseLogLevel } from "../src/server/log";
-import { TEST_LOG_LEVEL } from "./quiet-log";
+import { configureLog, logger, logs, parseLogLevel, type LogLevel } from "../src/server/log";
 
-const T = new Date("2026-10-27T19:40:01.234Z");
+let restore = () => {};
+afterEach(() => restore());
 
-function capture(level: "debug" | "info" | "warn" | "error" = "info") {
+/** Every line as written, timestamp included. */
+function capture(level: LogLevel = "info") {
   const lines: string[] = [];
-  configureLog({ level, sink: (l) => lines.push(l), clock: () => T });
+  restore = configureLog({ level, sink: (l) => lines.push(l) });
   return lines;
 }
-
-afterEach(() => configureLog({ level: TEST_LOG_LEVEL, sink: (l) => process.stdout.write(`${l}\n`), clock: () => new Date() }));
 
 test("one plain-text line: UTC timestamp, padded level, component, message", () => {
   const lines = capture();
   logger("scan").info("started", 3, { a: 1 });
   logger("scan").warn("slow");
-  expect(lines).toEqual(["2026-10-27T19:40:01.234Z INFO  scan: started 3 { a: 1 }", "2026-10-27T19:40:01.234Z WARN  scan: slow"]);
+  expect(lines[0]).toMatch(/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z INFO  scan: started 3 \{ a: 1 \}$/);
+  expect(lines[1]).toEndWith("Z WARN  scan: slow");
 });
 
 test("lines under the level are dropped", () => {
@@ -27,19 +27,20 @@ test("lines under the level are dropped", () => {
   log.warn("w");
   log.error("e");
   expect(lines.map((l) => l.split(" ")[1])).toEqual(["WARN", "ERROR"]);
+  expect([logs("info"), logs("warn")]).toEqual([false, true]);
 });
 
 test("debug shows with level debug", () => {
   const lines = capture("debug");
   logger("http").debug("GET /api/status 200 3ms");
-  expect(lines).toEqual(["2026-10-27T19:40:01.234Z DEBUG http: GET /api/status 200 3ms"]);
+  expect(lines[0]).toEndWith("Z DEBUG http: GET /api/status 200 3ms");
 });
 
 test("an error carries its stack", () => {
   const lines = capture();
   const e = new Error("boom");
   logger("api").error("failed:", e);
-  expect(lines[0]).toStartWith("2026-10-27T19:40:01.234Z ERROR api: failed: Error: boom\n");
+  expect(lines[0]).toContain("Z ERROR api: failed: Error: boom\n");
   expect(lines[0]).toContain(e.stack!.split("\n")[1]!);
 });
 

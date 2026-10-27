@@ -6,7 +6,6 @@ import type { Database } from "bun:sqlite";
 import type { HostKeyStore } from "../src/server/destinations/sftp";
 import { configureLog, type LogLevel } from "../src/server/log";
 import type { ScanInsert } from "../src/server/repos/scan-repo";
-import { TEST_LOG_LEVEL } from "./quiet-log";
 
 export function tmpdir(): string {
   return mkdtempSync(join(osTmpdir(), "scan-webapp-test-"));
@@ -70,10 +69,11 @@ export function memoryHostKeys(): HostKeyStore & { keys: Map<string, string> } {
  */
 export function captureLog(level: LogLevel = "info"): string[] {
   const lines: string[] = [];
+  let restore = () => {};
   beforeEach(() => {
     lines.length = 0;
-    configureLog({ level, sink: (l) => lines.push(l.slice(l.indexOf(" ") + 1)) });
+    restore = configureLog({ level, sink: (l) => lines.push(l.slice(l.indexOf(" ") + 1)) });
   });
-  afterEach(() => configureLog({ level: TEST_LOG_LEVEL, sink: (l) => process.stdout.write(`${l}\n`) }));
+  afterEach(() => restore());
   return lines;
 }

@@ -7,7 +7,7 @@ import { scansController } from "./controllers/scans";
 import { settingsController } from "./controllers/settings";
 import { systemController } from "./controllers/system";
 import { docsPage, scalarScript } from "./docs";
-import { logger } from "../log";
+import { logger, logs } from "../log";
 import { errorResponse, fail } from "./errors";
 import { crossSiteGuard } from "./guard";
 import { newRouter } from "./router";
@@ -24,6 +24,7 @@ const pathPattern = (path: string) => new RegExp(`^${path.replace(/[.+?^${}()|[\
 export function createApp(services: Services) {
   const app = newRouter();
   app.use("/api/*", async (c, next) => {
+    if (!logs("debug")) return next();
     const t0 = performance.now();
     await next();
     log.debug(`${c.req.method} ${c.req.path} ${c.res.status} ${Math.round(performance.now() - t0)}ms`);

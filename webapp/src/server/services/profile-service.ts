@@ -13,9 +13,9 @@ import {
 import type { ProfileRepo } from "../repos/profile-repo";
 import { NotFound } from "./errors";
 
-/** The config fields that choose where a destination sends to (and so where a stored secret would go). */
 const log = logger("profiles");
 
+/** The config fields that choose where a destination sends to (and so where a stored secret would go). */
 const TARGET_FIELDS = ["url", "host", "server", "port", "username"];
 
 /**

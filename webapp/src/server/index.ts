@@ -54,8 +54,7 @@ const services = createServices({
 });
 const { settings, scans } = services;
 // Analyses cut short by a restart fail, and their temporary scans go.
-const interrupted = services.deda?.recover() ?? 0;
-if (interrupted) logger("deda").info(`${interrupted} tracking-dot analysis(es) interrupted by the restart`);
+services.deda?.recover();
 
 hub.setSnapshot(() => [{ type: "status", status: client.status }, ...scans.liveScans().map((scan) => ({ type: "scan" as const, scan }))]);
 client.onStatus((status) => hub.broadcast({ type: "status", status }));
@@ -103,8 +102,7 @@ log.info(`listening on ${server.url} (scanner service ${config.serviceUrl}, log 
 const runCleanup = () => {
   const days = settings.read().cleanupDays;
   if (days) {
-    const n = scans.cleanup(days);
-    if (n) logger("cleanup").info(`removed ${n} scan(s) older than ${days} days`);
+    scans.cleanup(days);
   }
 };
 runCleanup();

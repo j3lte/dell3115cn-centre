@@ -12,20 +12,23 @@ export function parseLogLevel(v: string | undefined): LogLevel {
 
 let threshold: LogLevel = "info";
 let sink: (line: string) => void = (line) => void process.stdout.write(`${line}\n`);
-let clock = () => new Date();
 
-/** Level, output and clock for every logger; tests swap the sink and clock. */
-export function configureLog(o: { level?: LogLevel; sink?: (line: string) => void; clock?: () => Date }): void {
+/** Level and output for every logger; returns a function that puts back what was there (tests capture lines). */
+export function configureLog(o: { level?: LogLevel; sink?: (line: string) => void }): () => void {
+  const before = { threshold, sink };
   if (o.level) threshold = o.level;
   if (o.sink) sink = o.sink;
-  if (o.clock) clock = o.clock;
+  return () => ({ threshold, sink } = before);
 }
+
+/** Whether lines of this level are written: skip work that only feeds a dropped line. */
+export const logs = (level: LogLevel) => LEVELS[level] >= LEVELS[threshold];
 
 const part = (v: unknown) => (typeof v === "string" ? v : v instanceof Error ? (v.stack ?? `${v.name}: ${v.message}`) : Bun.inspect(v, { compact: true }));
 
 function emit(level: LogLevel, component: string, parts: unknown[]): void {
-  if (LEVELS[level] < LEVELS[threshold]) return;
-  sink(`${clock().toISOString()} ${level.toUpperCase().padEnd(5)} ${component}: ${parts.map(part).join(" ")}`);
+  if (!logs(level)) return;
+  sink(`${new Date().toISOString()} ${level.toUpperCase().padEnd(5)} ${component}: ${parts.map(part).join(" ")}`);
 }
 
 export type Logger = Record<LogLevel, (...parts: unknown[]) => void>;
