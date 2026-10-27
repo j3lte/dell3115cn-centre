@@ -25,15 +25,24 @@ FROM deps AS test
 COPY . .
 RUN bun test && touch /tmp/tests-passed
 
+# The server and its UI (React, Tailwind) bundled into dist/ (build.ts): no node_modules needed at run time ...
+FROM test AS build
+RUN bun build.ts
+
+# ... except sharp, a native addon with its own libvips: only it (the locked version) and its dependencies.
+FROM base AS sharp
+COPY --from=deps /app/node_modules/sharp/package.json /tmp/sharp.json
+RUN bun -e 'const v = (await Bun.file("/tmp/sharp.json").json()).version; await Bun.write("package.json", JSON.stringify({ dependencies: { sharp: v } }))' \
+ && bun install --production
+
 FROM base AS runtime
 ENV NODE_ENV=production \
     PORT=8080 \
-    DATA_DIR=/data
-COPY package.json bun.lock ./
-RUN bun install --frozen-lockfile --production
-COPY bunfig.toml tsconfig.json ./
+    DATA_DIR=/data \
+    APP_DIR=/app
+COPY --from=sharp /app/node_modules ./node_modules
+COPY --from=build /app/dist ./dist
 COPY assets ./assets
-COPY src ./src
 COPY --from=vendor /vendor ./vendor
 # Make the runtime image depend on the test stage, so a failing suite fails the build.
 COPY --from=test /tmp/tests-passed /tmp/tests-passed
@@ -43,4 +52,6 @@ EXPOSE 8080
 VOLUME /data
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s \
   CMD bun -e "fetch('http://localhost:'+(process.env.PORT||8080)+'/api/status').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
-CMD ["bun", "src/server/index.ts"]
+# Bun finds the bundled UI chunks relative to the working directory, so run from dist/.
+WORKDIR /app/dist
+CMD ["bun", "index.js"]

@@ -35,6 +35,8 @@ was reverse-engineered and is documented in `docs/PROTOCOL.md`.
 - Scanner service in simulator mode: `cd scanner-service && SCAN3115_SIM=1 SCAN3115_SPOOL=/tmp/scan3115 uv run --python 3.11 python -m scan3115`
 - Webapp tests: `cd webapp && bun test`; typecheck: `bunx tsc --noEmit -p .`; in its Alpine image with ImageMagick/Tesseract/smbclient: `docker build --target test webapp`
 - Webapp dev: `cd webapp && SERVICE_URL=http://localhost:8765 DATA_DIR=./data bun --hot src/server/index.ts`
+- Webapp production bundle (what the image runs): `cd webapp && bun build.ts` writes `dist/`; run it from `dist/`
+  with `APP_DIR` set to the webapp folder (`assets/`, `vendor/`). Only `sharp` stays in `node_modules` in the image.
 - Analyse service tests: `cd analyse && uv run --with pytest pytest -q`; in its container: `docker build --target test analyse`
 - CUPS filter tests: `uv run --with pytest pytest cups/tests`
 - Release script tests (changelog, version): `uv run --with pytest pytest tools/tests`

@@ -3,3 +3,4 @@ data
 docs
 *.sqlite
 .env
+dist

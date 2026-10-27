@@ -37,3 +37,4 @@ __pycache__/
 
 # Scalar bundle copied in by the Dockerfile (a build artefact).
 webapp/vendor/
+webapp/dist/

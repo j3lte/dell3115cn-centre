@@ -1,12 +1,13 @@
 import { existsSync, statSync } from "node:fs";
-import { fileURLToPath } from "node:url";
+import { join } from "node:path";
+import { appDir } from "../app-dir";
 import { runMagick } from "./magick";
 
 /**
  * The scanner's own colour profile, from Dell's Windows driver. It is not redistributed (Dell copyright), so it is
  * looked for at `DEVICE_ICC` or in `assets/` (see assets/README.md). Without it colour scans have a magenta cast.
  */
-export const BUNDLED_DEVICE_ICC = fileURLToPath(new URL("../../../assets/dell3115cn.icm", import.meta.url));
+export const BUNDLED_DEVICE_ICC = join(appDir(), "assets", "dell3115cn.icm");
 
 /** The device profile to use: env DEVICE_ICC (if that file exists), else the copy in assets/, else null. */
 export function deviceIccPath(env: Record<string, string | undefined> = process.env, bundled = BUNDLED_DEVICE_ICC): string | null {

@@ -1,11 +1,13 @@
 import { existsSync } from "node:fs";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Scalar } from "@scalar/hono-api-reference";
 import type { Handler } from "hono";
+import { appDir } from "../app-dir";
 import { fail } from "./errors";
 
 /** Where the image keeps Scalar's bundle (`vendor/scalar.js` in the app folder; the Dockerfile copies it there). */
-const vendoredBundle = fileURLToPath(new URL("../../../vendor/scalar.js", import.meta.url));
+const vendoredBundle = join(appDir(), "vendor", "scalar.js");
 
 /**
  * Scalar's single-file browser bundle: the vendored copy, else the dev dependency's `dist/browser/standalone.js` (not an
