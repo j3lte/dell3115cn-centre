@@ -21,6 +21,8 @@ Notable changes per release. Releases are tagged `x.y.z`; each heading links to 
   private key, without overwriting existing files. The server's host key is trusted on first use and checked on every
   later connection. SMB shares are no longer supported and `smbclient` is gone from the image (about 40 MiB smaller):
   output profiles that use SMB still show, but fail until you switch them to another destination (for example SFTP).
+- Changing the port or user name of a saved destination now asks for its password, token or key again (as changing
+  the host or URL already did), so a saved secret is never sent to another account or service.
 
 ## [1.0.0](https://github.com/j3lte/dell3115cn-centre/commits/1.0.0)
 
