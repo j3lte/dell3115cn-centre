@@ -59,12 +59,12 @@ describe("navigation", () => {
 
 describe("useFeatures", () => {
   test("is off until the server answers, then follows it", async () => {
-    stubFetch(() => Response.json({ analyse: true }));
+    stubFetch(() => Response.json({ analyse: true, retiredDestinations: { smb: "gone" } }));
     const client = new QueryClient();
     const wrap = ({ children }: { children: ReactNode }) => <QueryClientProvider client={client}>{children}</QueryClientProvider>;
     const { result } = renderHook(() => useFeatures(), { wrapper: wrap });
-    expect(result.current).toEqual({ analyse: false });
-    await waitFor(() => expect(result.current).toEqual({ analyse: true }));
+    expect(result.current).toEqual({ analyse: false, retiredDestinations: {} });
+    await waitFor(() => expect(result.current).toEqual({ analyse: true, retiredDestinations: { smb: "gone" } }));
   });
 });
 

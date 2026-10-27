@@ -3,6 +3,8 @@ import type { Services } from "../../services";
 import { errBody, forbidden, json, jsonBody, jsonRequest, newRouter } from "../router";
 import {
   DestinationTestSchema,
+  HostKeyQuery,
+  HostKeySchema,
   IdParam,
   InputProfileDraftSchema,
   InputProfileSchema,
@@ -14,10 +16,6 @@ const invalid = { 400: errBody("Invalid request, or a value the profile rules re
 const notFound = { 404: errBody("No such profile") };
 const params = z.object({ id: IdParam });
 const ok = z.object({ ok: z.literal(true) });
-/** A test's answer: SFTP adds the host key it trusted on first use (see destinations/sftp.ts). */
-const tested = z
-  .object({ ok: z.literal(true), hostKey: z.string().optional().meta({ description: "SFTP: the server's host key fingerprint, trusted on first use" }) })
-  .openapi("DestinationTested");
 const tags = ["Profiles"];
 
 const listInput = createRoute({
@@ -115,7 +113,7 @@ const testOutput = createRoute({
   summary: "Check that a saved profile's destination is reachable",
   request: { params },
   responses: {
-    200: jsonBody(tested, "The destination answered"),
+    200: jsonBody(ok, "The destination answered"),
     ...invalid,
     409: errBody("Stored credentials can't be decrypted"),
     422: errBody("The destination refused the test"),
@@ -138,12 +136,32 @@ const testDestination = createRoute({
   summary: "Check a destination configuration before it is saved",
   request: { body: jsonRequest(DestinationTestSchema) },
   responses: {
-    200: jsonBody(tested, "The destination answered"),
+    200: jsonBody(ok, "The destination answered"),
     ...invalid,
     409: errBody("Stored credentials can't be decrypted"),
     422: errBody("The destination refused the test"),
     ...forbidden,
   },
+});
+
+const getHostKey = createRoute({
+  method: "get",
+  path: "/api/host-keys",
+  tags,
+  summary: "The SFTP host key trusted for a server",
+  description: "SFTP destinations trust a server's host key on first use and refuse a different one later (see PROFILES.md).",
+  request: { query: HostKeyQuery },
+  responses: { 200: jsonBody(HostKeySchema, "The trusted key"), 400: errBody("Invalid host or port"), 404: errBody("No key trusted yet") },
+});
+
+const forgetHostKey = createRoute({
+  method: "delete",
+  path: "/api/host-keys",
+  tags,
+  summary: "Forget the SFTP host key trusted for a server",
+  description: "The next connection trusts whatever key the server shows and stores it.",
+  request: { query: HostKeyQuery },
+  responses: { 204: { description: "Forgotten (or there was none)" }, 400: errBody("Invalid host or port"), ...forbidden },
 });
 
 export function profilesController(s: Services) {
@@ -169,13 +187,23 @@ export function profilesController(s: Services) {
       return c.body(null, 204);
     })
     .openapi(testOutput, async (c) => {
-      const learned = await profiles.testOutput(c.req.valid("param").id);
-      return json(c, { ok: true as const, ...learned });
+      await profiles.testOutput(c.req.valid("param").id);
+      return json(c, { ok: true as const });
     })
     .openapi(addCommon, (c) => json(c, profiles.addCommon()))
     .openapi(testDestination, async (c) => {
       const { type, config, id } = c.req.valid("json");
-      const learned = await profiles.testDestination(type, config ?? {}, id ?? undefined, "targets");
-      return json(c, { ok: true as const, ...learned });
+      await profiles.testDestination(type, config ?? {}, id ?? undefined, "targets");
+      return json(c, { ok: true as const });
+    })
+    .openapi(getHostKey, (c) => {
+      const { host, port } = c.req.valid("query");
+      const key = s.hostKeys.get(host, port);
+      return key ? json(c, { host, port, ...key }, 200) : json(c, { error: "not_found", message: `No host key trusted for ${host}:${port}` }, 404);
+    })
+    .openapi(forgetHostKey, (c) => {
+      const { host, port } = c.req.valid("query");
+      s.hostKeys.forget(host, port);
+      return c.body(null, 204);
     });
 }

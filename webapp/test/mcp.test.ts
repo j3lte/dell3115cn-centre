@@ -510,11 +510,11 @@ test("a link to a delivered file whose scan was deleted answers 410", async () =
   expect(res.status).toBe(410);
 });
 
-test("assistants can't create SMB destinations", async () => {
+test("forget_sftp_host forgets the SFTP host key trusted for host:port", async () => {
   const { connect } = await setup();
+  h.services.hostKeys.set("nas.example", 22, `SHA256:${"a".repeat(43)}`);
   const c = await connect();
-  const smb = { ...paperless(), destination: { type: "smb", config: { server: "nas", share: "s" } } };
-  const r = await c.callTool({ name: "save_output_profile", arguments: { profile: smb } });
-  expect(r.isError).toBe(true);
-  expect(text(r)).toContain("SMB is no longer supported; choose another destination");
+  const r = await c.callTool({ name: "forget_sftp_host", arguments: { host: "nas.example" } });
+  expect(r.isError).toBeFalsy();
+  expect(h.services.hostKeys.get("nas.example", 22)).toBeNull();
 });

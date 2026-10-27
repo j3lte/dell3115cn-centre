@@ -12,7 +12,8 @@ import { ValidationError } from "../src/server/profiles";
 import { ProfileRepo } from "../src/server/repos/profile-repo";
 import { ProfileService } from "../src/server/services/profile-service";
 import { SecretBox } from "../src/server/secrets";
-import { tmpdir } from "./helpers";
+import { memoryHostKeys, tmpdir } from "./helpers";
+import { createDestinations } from "../src/server/destinations";
 
 const fx = (name: string) => join(import.meta.dir, "fixtures", name);
 const f = (over: Partial<Filter>): Filter => ({ ...DEFAULT_FILTER, ...over });
@@ -172,7 +173,7 @@ test("makeThumb takes an optional filter", async () => {
 
 test("input profiles carry a default filter, persisted", () => {
   const repo = new ProfileRepo(openDb(":memory:"), new SecretBox("s"));
-  const service = new ProfileService(repo);
+  const service = new ProfileService(repo, createDestinations({ hostKeys: memoryHostKeys() }));
   const plain = service.createInput({ name: "Plain", source: "adf", mode: "gray", dpi: 300, paper: "a4", autoOrient: false, threshold: 128 });
   expect(repo.getInput(plain.id)!.filter).toEqual(DEFAULT_FILTER);
   const saved = service.createInput({ ...repo.listInput()[0]!, name: "Doc", filter: f({ preset: "document", deskew: true }) });

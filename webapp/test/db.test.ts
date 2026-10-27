@@ -20,16 +20,17 @@ test("a new database gets the whole schema in one version", () => {
   expect(cols("input_profiles").find((c) => c.name === "depth")?.dflt_value).toBe("8");
   expect(cols("input_profiles").some((c) => c.name === "filter")).toBe(true);
   expect(cols("pages").some((c) => c.name === "filter")).toBe(true);
-  expect(db.query<{ version: number }, []>("SELECT version FROM schema_version").get()!.version).toBe(2);
+  expect(db.query<{ version: number }, []>("SELECT version FROM schema_version").get()!.version).toBe(3);
 });
 
 const version = (db: ReturnType<typeof openDb>) => db.query<{ version: number }, []>("SELECT version FROM schema_version").get()!.version;
 const dedaCols = (db: ReturnType<typeof openDb>) =>
   db.query<{ name: string }, []>("PRAGMA table_info(deda_analyses)").all().map((c) => c.name);
 
-test("a fresh database is at version 2 with deda_analyses", () => {
+test("a fresh database is at version 3 with deda_analyses and host_keys", () => {
   const db = openDb(":memory:");
-  expect(version(db)).toBe(2);
+  expect(version(db)).toBe(3);
+  expect(db.query<{ name: string }, []>("PRAGMA table_info(host_keys)").all().map((c) => c.name)).toEqual(["host", "port", "fingerprint", "first_seen"]);
   expect(dedaCols(db)).toEqual([
     "id", "name", "status", "source", "scan_id", "page", "dpi", "scanned_at", "analysed_at",
     "found", "dots", "grid_score", "decode", "decode_error", "error", "images",
@@ -39,15 +40,16 @@ test("a fresh database is at version 2 with deda_analyses", () => {
   expect(db.query<{ images: string }, []>("SELECT images FROM deda_analyses").get()!.images).toBe("[]");
 });
 
-test("a version-1 database migrates to version 2 and keeps its data", () => {
+test("a version-1 database migrates to the latest version and keeps its data", () => {
   const p = tmp("db.sqlite");
   const old = openDb(p);
-  old.exec("DROP TABLE deda_analyses; UPDATE schema_version SET version = 1");
+  old.exec("DROP TABLE deda_analyses; DROP TABLE host_keys; UPDATE schema_version SET version = 1");
   old.exec("INSERT INTO scans (id, created_at, input_profile, status) VALUES ('s', 1, '{}', 'done')");
   old.close();
   const db = openDb(p);
-  expect(version(db)).toBe(2);
+  expect(version(db)).toBe(3);
   expect(tables(db)).toContain("deda_analyses");
+  expect(tables(db)).toContain("host_keys");
   expect(db.query<{ n: number }, []>("SELECT count(*) AS n FROM scans").get()!.n).toBe(1);
   db.close();
 });
@@ -73,8 +75,8 @@ test("pages and deliveries need an existing scan", () => {
 
 test("a database from another schema version is refused", () => {
   const p = tmp("db.sqlite");
-  openDb(p).exec("UPDATE schema_version SET version = 3");
-  expect(() => openDb(p)).toThrow(/schema version 3/);
+  openDb(p).exec("UPDATE schema_version SET version = 99");
+  expect(() => openDb(p)).toThrow(/schema version 99/);
 });
 
 test("isUuid accepts RFC 4122 shapes only", () => {

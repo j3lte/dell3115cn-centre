@@ -1,4 +1,4 @@
-/** "smb" is retired: old profiles still load, but it refuses every use (see smb.ts). */
+/** "smb" is retired (see `Destination.retired`). */
 export type DestinationType = "download" | "folder" | "sftp" | "ftp" | "paperless" | "papra" | "webhook" | "smb";
 
 export const DESTINATION_TYPES: DestinationType[] = ["download", "folder", "sftp", "ftp", "paperless", "papra", "webhook", "smb"];
@@ -37,22 +37,32 @@ export type SendMeta = { scanId: string; title: string };
 
 export type DeliveryFile = { name: string; path: string; mime: string };
 
-/** Config fields a destination learned while connecting (SFTP's trusted host key), for the profile to store. */
-export type Learned = Record<string, string>;
-
-/**
- * Server-managed config fields (what a destination learns, see `Learned`). Saving keeps the stored value unless the
- * new one is a non-empty value or `null` (explicitly forgotten); "" or a missing field never clears it.
- */
-export const LEARNED_FIELDS: Partial<Record<DestinationType, string[]>> = { sftp: ["hostKey"] };
-
 export interface Destination<C> {
   type: DestinationType;
+  /** Set on a destination that is no longer offered: its profiles still load, but every use refuses with this message. */
+  retired?: string;
   /** Validates an untrusted config (UI form); throws ValidationError. */
   parse(config: unknown): C;
   /** Checks the settings work; throws DeliveryError. */
-  test(c: C): Promise<Learned | void>;
-  send(files: DeliveryFile[], c: C, meta: SendMeta): Promise<{ ref?: string; learned?: Learned }>;
+  test(c: C): Promise<void>;
+  send(files: DeliveryFile[], c: C, meta: SendMeta): Promise<{ ref?: string }>;
+}
+
+/** A destination that is no longer offered: parse refuses with ValidationError, test and send with DeliveryError. */
+export function retiredDestination(type: DestinationType, message: string): Destination<never> {
+  return {
+    type,
+    retired: message,
+    parse() {
+      throw new ValidationError(message);
+    },
+    test: async () => {
+      throw new DeliveryError(message);
+    },
+    send: async () => {
+      throw new DeliveryError(message);
+    },
+  };
 }
 
 // ---- helpers shared by the destination modules ----
@@ -82,6 +92,23 @@ export function httpUrl(o: Record<string, unknown>, key: string, label: string):
   }
   if (u.protocol !== "http:" && u.protocol !== "https:") throw new ValidationError(`${label} must start with http:// or https://`);
   return v.replace(/\/+$/, "");
+}
+
+/** `host` and `port` of a config (FTP, SFTP); throws ValidationError. */
+export function hostPort(o: Record<string, unknown>, defaultPort: number): { host: string; port: number } {
+  const port = o.port === undefined || o.port === null || o.port === "" ? defaultPort : Number(o.port);
+  if (!Number.isInteger(port) || port < 1 || port > 65535) throw new ValidationError("Port must be 1-65535");
+  const host = str(o, "host", "Host");
+  if (!/^[A-Za-z0-9.:_-]+$/.test(host)) throw new ValidationError("Host must be a host name or IP address");
+  return { host, port };
+}
+
+const NETWORK_CODES = new Set(["ECONNREFUSED", "ENOTFOUND", "EHOSTUNREACH", "ENETUNREACH", "ETIMEDOUT", "ECONNRESET", "EAI_AGAIN"]);
+
+/** A socket error that means the server can't be reached (for `cannotReach`). */
+export function isNetworkError(e: unknown): boolean {
+  const code = (e as { code?: unknown } | null)?.code;
+  return typeof code === "string" && NETWORK_CODES.has(code);
 }
 
 /** Readable error for a network failure (fetch / sockets). */

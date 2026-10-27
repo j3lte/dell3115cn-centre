@@ -1,4 +1,5 @@
 import { createRoute, z } from "@hono/zod-openapi";
+import { RETIRED_DESTINATIONS } from "../../destinations";
 import type { Services } from "../../services";
 import { errBody, forbidden, json, jsonBody, newRouter } from "../router";
 import { FeaturesSchema, PrinterViewSchema, ScannerStatusSchema } from "../schemas";
@@ -16,7 +17,7 @@ const features = createRoute({
   path: "/api/features",
   tags: ["System"],
   summary: "Optional features this deployment has switched on",
-  responses: { 200: jsonBody(FeaturesSchema, "`analyse` is true when ANALYSE_ENDPOINT is set") },
+  responses: { 200: jsonBody(FeaturesSchema, "`analyse` is true when ANALYSE_ENDPOINT is set; the retired destination types") },
 });
 
 const printer = createRoute({
@@ -57,7 +58,7 @@ const connect = createRoute({
 export function systemController(s: Services) {
   return newRouter()
     .openapi(status, (c) => json(c, s.scanner.status))
-    .openapi(features, (c) => json(c, { analyse: s.analyse !== null }))
+    .openapi(features, (c) => json(c, { analyse: s.analyse !== null, retiredDestinations: RETIRED_DESTINATIONS }))
     .openapi(printer, async (c) => json(c, await s.printer.get()))
     .openapi(refreshPrinter, async (c) => {
       const { ifStale } = c.req.valid("query");

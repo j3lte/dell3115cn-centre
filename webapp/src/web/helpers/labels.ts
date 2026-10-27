@@ -25,12 +25,8 @@ export const DEST_LABEL: Record<DestType, string> = {
   paperless: "Paperless-ngx",
   papra: "Papra",
   webhook: "Webhook",
-  smb: "SMB share (no longer supported)",
+  smb: "SMB share",
 };
-
-/** Destinations an older version offered: their profiles still show, but can only be switched to another type. */
-export const RETIRED_DESTS: DestType[] = ["smb"];
-export const RETIRED_DEST_MESSAGE = "SMB is no longer supported; choose another destination";
 
 export const PRESET_LABELS: Record<Filter["preset"], string> = {
   none: "Original",

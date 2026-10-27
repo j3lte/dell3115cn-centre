@@ -1,5 +1,6 @@
 import { afterEach, beforeAll, describe, expect, mock, test } from "bun:test";
 import { act, render, waitFor, within } from "@testing-library/react";
+import { SMB_RETIRED } from "../../src/server/destinations/smb";
 import { DEST_FIELDS, MASK } from "../../src/web/helpers/profiles";
 import { keys } from "../../src/web/lib/query";
 import type { OutputProfile } from "../../src/web/types/api";
@@ -14,6 +15,8 @@ let ProfileList: typeof import("../../src/web/components/profiles/ProfileList").
 let FormShell: typeof import("../../src/web/components/profiles/FormShell").FormShell;
 let OutputProfileForm: typeof import("../../src/web/components/profiles/OutputProfileForm").OutputProfileForm;
 let DestinationField: typeof import("../../src/web/components/profiles/DestinationField").DestinationField;
+let MultilineSecretField: typeof import("../../src/web/components/profiles/MultilineSecretField").MultilineSecretField;
+let HostKeyField: typeof import("../../src/web/components/profiles/HostKeyField").HostKeyField;
 let CommonProfiles: typeof import("../../src/web/components/profiles/CommonProfiles").CommonProfiles;
 let ProfilesPage: typeof import("../../src/web/pages/ProfilesPage").ProfilesPage;
 let useProfiles: typeof import("../../src/web/hooks/useProfiles").useProfiles;
@@ -22,6 +25,8 @@ beforeAll(async () => {
   ({ FormShell } = await import("../../src/web/components/profiles/FormShell"));
   ({ OutputProfileForm } = await import("../../src/web/components/profiles/OutputProfileForm"));
   ({ DestinationField } = await import("../../src/web/components/profiles/DestinationField"));
+  ({ MultilineSecretField } = await import("../../src/web/components/profiles/MultilineSecretField"));
+  ({ HostKeyField } = await import("../../src/web/components/profiles/HostKeyField"));
   ({ CommonProfiles } = await import("../../src/web/components/profiles/CommonProfiles"));
   ({ ProfilesPage } = await import("../../src/web/pages/ProfilesPage"));
   ({ useProfiles } = await import("../../src/web/hooks/useProfiles"));
@@ -30,6 +35,9 @@ beforeAll(async () => {
 afterEach(() => {
   location.hash = "";
 });
+
+/** The form's own requests: without the features it loads to know the retired destinations. */
+const apiCalls = (stub: { calls: Request[] }) => stub.calls.filter((r) => path(r) !== "/api/features");
 
 describe("ProfileList", () => {
   test("ProfileList marks the selected profile and reports a click", async () => {
@@ -110,62 +118,83 @@ describe("forms", () => {
     expect((screen.getByRole("textbox", { name: "Name" }) as HTMLInputElement).value).toBe("Letters (gray 300)");
   });
 
-  test("OutputProfileForm shows the destination's fields; SMB is not offered", async () => {
+  const features = { analyse: false, retiredDestinations: { smb: SMB_RETIRED } };
+  const KEY = `SHA256:${"k".repeat(43)}`;
+
+  test("OutputProfileForm offers no retired destination once the server has said which", async () => {
+    stubFetch((req) => (path(req) === "/api/features" ? Response.json(features) : Response.json({})));
+    renderWithQuery(<OutputProfileForm profile={null} />);
+    const picker = screen.getByRole("combobox", { name: "Destination" });
+    const names = () => [...(picker as HTMLSelectElement).options].map((o) => o.textContent);
+    await waitFor(() => expect(names()).not.toContain("SMB share"));
+    expect(names()).toContain("SFTP (SSH)");
+  });
+
+  test("OutputProfileForm shows the SFTP fields: the private key as a text area, the password hidden", async () => {
+    stubFetch(() => new Response(null, { status: 404 }));
     renderWithQuery(<OutputProfileForm profile={null} />);
     expect(screen.queryByLabelText("Host")).toBeNull();
-    const picker = screen.getByRole("combobox", { name: "Destination" });
-    expect(within(picker).queryByRole("option", { name: /SMB/ })).toBeNull();
-    await user.selectOptions(picker, "sftp");
-    for (const f of DEST_FIELDS.sftp.filter((f) => f.kind !== "hostKey")) expect(screen.getByLabelText(f.label)).toBeTruthy();
-    expect((screen.getByLabelText("Private key") as HTMLElement).tagName).toBe("TEXTAREA");
+    await user.selectOptions(screen.getByRole("combobox", { name: "Destination" }), "sftp");
+    for (const f of DEST_FIELDS.sftp) expect(screen.getByLabelText(f.label)).toBeTruthy();
+    expect(screen.getByLabelText("Private key").tagName).toBe("TEXTAREA");
     expect((screen.getByLabelText("Password") as HTMLInputElement).type).toBe("password");
-    expect(screen.getByText(/Not stored yet/)).toBeTruthy();
+    expect(screen.queryByText("Host key")).toBeNull(); // no host yet
     expect(screen.getByRole("button", { name: "Test" })).toBeTruthy();
   });
 
-  const server = {
-    id: 6,
-    name: "Server",
-    format: "pdf_multi",
-    jpegQuality: 80,
-    filenameTemplate: "{date}_scan",
-    destination: { type: "sftp", config: { host: "files.example", port: 22, path: "scans", username: "u", password: "", privateKey: MASK, passphrase: MASK, hostKey: "" } },
-  } as unknown as OutputProfile;
-
-  test("an SFTP profile masks its stored key, and a Test fills in the trusted host key, which can be cleared", async () => {
-    const key = `SHA256:${"k".repeat(43)}`;
-    const stub = stubFetch((req) => (path(req) === "/api/destinations/test" ? Response.json({ ok: true, hostKey: key }) : Response.json({ ...server })));
-    renderWithQuery(<OutputProfileForm profile={server} />);
+  test("MultilineSecretField shows a stored key as empty and keeps it when left untouched", async () => {
+    const onChange = mock((_v: unknown) => {});
+    render(<MultilineSecretField spec={{ key: "privateKey", label: "Private key", kind: "secret", multiline: true }} value={MASK} onChange={onChange} />);
     const pem = screen.getByLabelText("Private key") as HTMLTextAreaElement;
     expect(pem.value).toBe("");
     expect(pem.placeholder).toBe("Saved — paste to replace");
-    expect((screen.getByLabelText("Passphrase") as HTMLInputElement).placeholder).toBe("Saved — type to replace");
-    await user.click(screen.getByRole("button", { name: "Test" }));
-    expect(await screen.findByText("✓ Connection works.")).toBeTruthy();
-    expect(screen.getByText(key)).toBeTruthy();
-    await user.click(screen.getByRole("button", { name: "Save" }));
-    await waitFor(() => expect(stub.calls.map(endpoint)).toContain("PUT /api/output-profiles/6"));
-    const put = stub.calls.find((r) => endpoint(r) === "PUT /api/output-profiles/6")!;
-    expect((await put.json()).destination.config).toMatchObject({ hostKey: key, privateKey: MASK, passphrase: MASK });
+    await user.click(pem);
+    await user.tab();
+    expect(onChange).toHaveBeenCalledWith(MASK);
+  });
+
+  test("HostKeyField shows the key trusted for host:port and forgets it", async () => {
+    let stored = true;
+    const stub = stubFetch((req) => {
+      if (req.method === "DELETE") return ((stored = false), new Response(null, { status: 204 }));
+      return stored ? Response.json({ host: "nas.example", port: 2222, fingerprint: KEY, firstSeen: 1 }) : Response.json({ error: "not_found", message: "none" }, { status: 404 });
+    });
+    renderWithQuery(<HostKeyField host="nas.example" port={2222} />);
+    expect(await screen.findByText(KEY)).toBeTruthy();
+    expect(new URL(stub.calls[0]!.url).search).toBe("?host=nas.example&port=2222");
     await user.click(screen.getByRole("button", { name: "Forget host key" }));
-    expect(screen.queryByText(key)).toBeNull();
-    expect(screen.getByText(/Forgotten when you save/)).toBeTruthy();
-    await user.click(screen.getByRole("button", { name: "Save" }));
-    await waitFor(() => expect(stub.calls.filter((r) => endpoint(r) === "PUT /api/output-profiles/6")).toHaveLength(2));
-    const forget = stub.calls.filter((r) => endpoint(r) === "PUT /api/output-profiles/6")[1]!;
-    expect((await forget.json()).destination.config.hostKey).toBeNull(); // explicit: "" would keep the stored key
+    expect(await screen.findByText(/Not stored yet/)).toBeTruthy();
+    expect(stub.calls.map(endpoint)).toContain("DELETE /api/host-keys");
+  });
+
+  test("a Test of an SFTP destination shows the host key it trusted", async () => {
+    const server = {
+      ...archive,
+      destination: { type: "sftp", config: { host: "files.example", port: 22, username: "u", password: MASK } },
+    } as unknown as OutputProfile;
+    let trusted = false;
+    stubFetch((req) => {
+      if (path(req) === "/api/destinations/test") return ((trusted = true), Response.json({ ok: true }));
+      if (path(req) === "/api/host-keys" && trusted) return Response.json({ host: "files.example", port: 22, fingerprint: KEY, firstSeen: 1 });
+      return Response.json({ error: "not_found", message: "none" }, { status: 404 });
+    });
+    renderWithQuery(<OutputProfileForm profile={server} />);
+    expect(await screen.findByText(/Not stored yet/)).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Test" }));
+    expect(await screen.findByText(KEY)).toBeTruthy();
   });
 
   test("an SMB profile from an older version shows as no longer supported and can be switched", async () => {
+    stubFetch((req) => (path(req) === "/api/features" ? Response.json(features) : Response.json({})));
     const old = { ...archive, destination: { type: "smb", config: { server: "nas", share: "s", password: MASK } } } as unknown as OutputProfile;
     renderWithQuery(<OutputProfileForm profile={old} />);
     const picker = screen.getByRole("combobox", { name: "Destination" }) as HTMLSelectElement;
-    expect(picker.selectedOptions[0]!.textContent).toBe("SMB share (no longer supported)");
-    expect(screen.getByText("SMB is no longer supported; choose another destination")).toBeTruthy();
+    await waitFor(() => expect(picker.selectedOptions[0]!.textContent).toBe("SMB share (no longer supported)"));
+    expect(screen.getByText(SMB_RETIRED)).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Test" })).toBeNull();
     await user.selectOptions(picker, "sftp");
     expect(screen.getByLabelText("Host")).toBeTruthy();
-    expect(screen.queryByText("SMB is no longer supported; choose another destination")).toBeNull();
+    expect(screen.queryByText(SMB_RETIRED)).toBeNull();
   });
 
   const archive = {
@@ -178,18 +207,19 @@ describe("forms", () => {
   } as unknown as OutputProfile;
 
   test("OutputProfileForm tests the destination with the profile's id and forgets the answer when the destination changes", async () => {
-    let answer = Response.json({ ok: true });
-    const stub = stubFetch(() => answer);
+    let answer = () => Response.json({ ok: true });
+    const stub = stubFetch((req) => (path(req) === "/api/destinations/test" ? answer() : Response.json(features)));
     renderWithQuery(<OutputProfileForm profile={archive} />);
     await user.click(screen.getByRole("button", { name: "Test" }));
     expect(await screen.findByText("✓ Connection works.")).toBeTruthy();
-    expect(path(stub.calls[0]!)).toBe("/api/destinations/test");
-    expect(await stub.calls[0]!.json()).toEqual({ type: "paperless", config: { url: "http://paperless.example", token: MASK }, id: 5 });
+    const tested = apiCalls(stub)[0]!;
+    expect(path(tested)).toBe("/api/destinations/test");
+    expect(await tested.json()).toEqual({ type: "paperless", config: { url: "http://paperless.example", token: MASK }, id: 5 });
 
     await user.type(screen.getByLabelText("Paperless URL"), "/x");
     expect(screen.queryByText("✓ Connection works.")).toBeNull();
 
-    answer = Response.json({ error: "test_failed", message: "401 Unauthorized" }, { status: 422 });
+    answer = () => Response.json({ error: "test_failed", message: "401 Unauthorized" }, { status: 422 });
     await user.click(screen.getByRole("button", { name: "Test" }));
     expect((await screen.findByRole("alert")).textContent).toContain("401 Unauthorized");
   });
@@ -200,7 +230,7 @@ describe("forms", () => {
     await user.type(screen.getByRole("textbox", { name: "Name" }), "Archive");
     await user.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(location.hash).toBe("#/profiles/out/9"));
-    expect(stub.calls.map(endpoint)).toEqual(["POST /api/output-profiles"]);
+    expect(apiCalls(stub).map(endpoint)).toEqual(["POST /api/output-profiles"]);
     // The page for the new id mounts a fresh form, which takes the flash.
     unmount();
     renderWithQuery(<OutputProfileForm profile={{ ...archive, id: 9 }} />);
@@ -211,10 +241,10 @@ describe("forms", () => {
     const stub = stubFetch(() => new Response(null, { status: 204 }));
     renderWithQuery(<OutputProfileForm profile={archive} />);
     await user.click(screen.getByRole("button", { name: "Delete" }));
-    expect(stub.calls).toEqual([]);
+    expect(apiCalls(stub)).toEqual([]);
     await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Delete" }));
     await waitFor(() => expect(location.hash).toBe("#/profiles"));
-    expect(stub.calls.map(endpoint)).toEqual(["DELETE /api/output-profiles/5"]);
+    expect(apiCalls(stub).map(endpoint)).toEqual(["DELETE /api/output-profiles/5"]);
   });
 
   test("DestinationField shows a masked secret as the mask", async () => {

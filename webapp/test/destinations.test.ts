@@ -1,14 +1,17 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { getDestination } from "../src/server/destinations";
+import { createDestinations } from "../src/server/destinations";
 import { createFtpDestination, type FtpClientLike } from "../src/server/destinations/ftp";
-import { createSftpDestination, fingerprint, type SftpClientLike } from "../src/server/destinations/sftp";
+import { createSftpDestination, fingerprint, WRITE_CHUNK, type SftpClientLike } from "../src/server/destinations/sftp";
+import { SMB_RETIRED } from "../src/server/destinations/smb";
 import { DeliveryError, ValidationError } from "../src/server/destinations/types";
 import type { OutFile } from "../src/server/output/encode";
 import { utils } from "ssh2";
-import { tmpdir } from "./helpers";
+import { fakeFingerprint, memoryHostKeys, tmpdir } from "./helpers";
+
+const getDestination = createDestinations({ hostKeys: memoryHostKeys() });
 
 const meta = { scanId: "scan-1", title: "2026-10-26_0114_scan" };
 
@@ -193,55 +196,85 @@ describe("webhook", () => {
 });
 
 describe("smb (retired)", () => {
-  const retired = "SMB is no longer supported; choose another destination";
-  const old = { server: "nas.example", share: "scans", path: "inbox", username: "user", password: "pw" };
-
-  test("parse, test and send all refuse with the same message", async () => {
+  test("parse, test and send all refuse with the retired message", async () => {
     const d = getDestination("smb");
-    expect(() => d.parse(old)).toThrow(retired);
-    await expect(d.test(old)).rejects.toThrow(retired);
-    await expect(d.send(outFiles(["a.pdf"]), old, meta)).rejects.toThrow(retired);
-    const err = await d.send([], old, meta).catch((e) => e);
+    expect(d.retired).toBe(SMB_RETIRED);
+    expect(() => d.parse({ server: "nas.example", share: "scans" })).toThrow(ValidationError);
+    expect(() => d.parse({})).toThrow(SMB_RETIRED);
+    await expect(d.test({} as never)).rejects.toThrow(SMB_RETIRED);
+    const err = await d.send(outFiles(["a.pdf"]), {} as never, meta).catch((e: unknown) => e);
     expect(err).toBeInstanceOf(DeliveryError);
+    expect((err as Error).message).toBe(SMB_RETIRED);
   });
 });
 
-describe("sftp", () => {
-  const KEY_A = `SHA256:${"A".repeat(43)}`;
-  const KEY_B = `SHA256:${"B".repeat(43)}`;
+/**
+ * A fresh ed25519 key. ssh2's generator writes a malformed key about 1 time in 256 (a public key with a leading zero
+ * byte loses it), so keys that don't parse are thrown away; keys from ssh-keygen don't have this problem.
+ */
+function testKey(passphrase?: string): string {
+  for (;;) {
+    const k = passphrase
+      ? utils.generateKeyPairSync("ed25519", { passphrase, cipher: "aes256-cbc", rounds: 16 }).private
+      : utils.generateKeyPairSync("ed25519").private;
+    if (!(utils.parseKey(k, passphrase) instanceof Error)) return k;
+  }
+}
 
-  type Fake = { log: string[]; files: Map<string, string>; dirs: Set<string>; factory: () => SftpClientLike; hostKey: string };
-  function fakeServer(o: { hostKey?: string; fail?: Error; files?: string[]; dirs?: string[]; readOnly?: boolean } = {}): Fake {
+describe("sftp", () => {
+  const KEY_A = fakeFingerprint("A");
+  const KEY_B = fakeFingerprint("B");
+
+  type Fake = { log: string[]; files: Map<string, Buffer>; writes: { path: string; position: number; length: number }[]; client: () => SftpClientLike };
+  function fakeServer(o: { hostKey?: string; fail?: Error; files?: string[]; dirs?: string[]; readOnly?: boolean; listMisses?: boolean } = {}): Fake {
+    const dirs = new Set(o.dirs ?? [".", "scans"]);
+    const open = new Map<string, string>(); // handle → path
     const fake: Fake = {
       log: [],
-      files: new Map((o.files ?? []).map((f) => [f, "old"])),
-      dirs: new Set(o.dirs ?? [".", "scans"]),
-      hostKey: o.hostKey ?? KEY_A,
-      factory: () => ({
+      files: new Map((o.files ?? []).map((f) => [f, Buffer.from("old")])),
+      writes: [],
+      client: () => ({
         async connect(c) {
           fake.log.push(`connect ${c.username}@${c.host}:${c.port}${c.password ? " password" : ""}${c.privateKey ? " key" : ""}`);
-          if (!c.verifyHostKey(fake.hostKey)) throw new Error("Host denied (verification failed)");
+          if (!c.verifyHostKey(o.hostKey ?? KEY_A)) throw new Error("Host denied (verification failed)");
           if (o.fail) throw o.fail;
         },
         async isDirectory(path) {
           fake.log.push(`stat ${path}`);
-          if (fake.dirs.has(path)) return true;
+          if (dirs.has(path)) return true;
           if (fake.files.has(path)) return false;
           throw Object.assign(new Error("No such file"), { code: 2 });
         },
         async list(path) {
+          if (o.listMisses) return [];
           const prefix = path === "." ? "" : `${path}/`;
           return [...fake.files.keys()].filter((f) => f.startsWith(prefix) && !f.slice(prefix.length).includes("/")).map((f) => f.slice(prefix.length));
         },
         async exists(path) {
-          return fake.files.has(path) || fake.dirs.has(path);
+          return fake.files.has(path) || dirs.has(path);
         },
-        async put(local, remote) {
-          await Bun.sleep(2);
+        async create(path) {
+          await Bun.sleep(1);
           if (o.readOnly) throw Object.assign(new Error("Permission denied"), { code: 3 });
-          if (fake.files.has(remote)) throw Object.assign(new Error("Failure"), { code: 4 });
-          fake.files.set(remote, local === null ? "" : readFileSync(local, "utf8"));
-          fake.log.push(`put ${remote}`);
+          if (fake.files.has(path)) throw Object.assign(new Error("Failure"), { code: 4 });
+          fake.files.set(path, Buffer.alloc(0));
+          fake.log.push(`create ${path}`);
+          const handle = Buffer.from(`h${open.size}`);
+          open.set(handle.toString(), path);
+          return handle;
+        },
+        async write(handle, data, position) {
+          const path = open.get(handle.toString())!;
+          fake.writes.push({ path, position, length: data.length });
+          await Bun.sleep(Math.random() * 3); // writes in flight finish in any order
+          const cur = fake.files.get(path)!;
+          const next = Buffer.alloc(Math.max(cur.length, position + data.length));
+          cur.copy(next);
+          data.copy(next, position);
+          fake.files.set(path, next);
+        },
+        async closeFile(handle) {
+          open.delete(handle.toString());
         },
         async remove(path) {
           fake.files.delete(path);
@@ -255,10 +288,11 @@ describe("sftp", () => {
     return fake;
   }
   const config = { host: "files.example", path: "scans", username: "scanner", password: "pw" };
+  const text = (b: Buffer | undefined) => b?.toString();
 
   describe("parse", () => {
-    const d = createSftpDestination(fakeServer().factory);
-    test("defaults: port 22, path '.', no host key yet", () => {
+    const d = createSftpDestination(memoryHostKeys(), fakeServer().client);
+    test("defaults: port 22, path '.'", () => {
       expect(d.parse({ host: "files.example", username: "u", password: "p" })).toEqual({
         host: "files.example",
         port: 22,
@@ -267,7 +301,6 @@ describe("sftp", () => {
         password: "p",
         privateKey: "",
         passphrase: "",
-        hostKey: "",
       });
     });
     test("rejects a bad host, port, user and missing credentials", () => {
@@ -278,111 +311,127 @@ describe("sftp", () => {
       expect(() => d.parse({ ...config, password: "" })).toThrow("Enter a password or a private key");
     });
     test("a private key must be a key block that opens (with its passphrase)", () => {
-      const plain = utils.generateKeyPairSync("ed25519").private;
-      const locked = utils.generateKeyPairSync("ed25519", { passphrase: "secret", cipher: "aes256-cbc", rounds: 16 }).private;
+      const plain = testKey();
+      const locked = testKey("secret");
       expect(d.parse({ ...config, password: "", privateKey: plain }).privateKey).toBe(plain.trim());
       expect(() => d.parse({ ...config, password: "", privateKey: "ssh-ed25519 AAAA… user@host" })).toThrow("The private key must be the text of a key file");
       expect(() => d.parse({ ...config, password: "", privateKey: locked })).toThrow("The private key is encrypted: enter its passphrase");
       expect(() => d.parse({ ...config, password: "", privateKey: locked, passphrase: "wrong" })).toThrow(/private key/);
       expect(d.parse({ ...config, password: "", privateKey: locked, passphrase: "secret" }).passphrase).toBe("secret");
     });
-    test("a stored host key must be an SHA256 fingerprint", () => {
-      expect(d.parse({ ...config, hostKey: KEY_A }).hostKey).toBe(KEY_A);
-      expect(() => d.parse({ ...config, hostKey: "md5:aa:bb" })).toThrow("Host key must look like SHA256:…");
-    });
   });
 
-  test("test() checks the folder is writable with a temporary file and learns the host key", async () => {
+  test("test() checks the folder is writable with a temporary file it removes again", async () => {
     const fake = fakeServer();
-    const d = createSftpDestination(fake.factory);
-    const learned = await d.test(d.parse(config));
-    expect(learned).toEqual({ hostKey: KEY_A });
+    const d = createSftpDestination(memoryHostKeys(), fake.client);
+    await d.test(d.parse(config));
     expect(fake.log[0]).toBe("connect scanner@files.example:22 password");
     expect(fake.log[1]).toBe("stat scans");
-    expect(fake.log[2]).toMatch(/^put scans\/\.centre-test-[0-9a-f]+$/);
-    expect(fake.log[3]).toBe(`remove ${fake.log[2]!.slice(4)}`);
+    expect(fake.log[2]).toMatch(/^create scans\/\.centre-test-[0-9a-f]+$/);
+    expect(fake.log[3]).toBe(`remove ${fake.log[2]!.slice(7)}`);
     expect(fake.log.at(-1)).toBe("close");
     expect(fake.files.size).toBe(0);
-  });
-
-  test("test() with the stored host key learns nothing new", async () => {
-    const d = createSftpDestination(fakeServer().factory);
-    expect(await d.test(d.parse({ ...config, hostKey: KEY_A }))).toBeUndefined();
   });
 
   test("test() refuses a missing folder, a file and a read-only folder", async () => {
-    const d = createSftpDestination(fakeServer({ files: ["scans.txt"] }).factory);
+    const d = createSftpDestination(memoryHostKeys(), fakeServer({ files: ["scans.txt"] }).client);
     await expect(d.test(d.parse({ ...config, path: "nope" }))).rejects.toThrow("SFTP: folder nope does not exist");
     await expect(d.test(d.parse({ ...config, path: "scans.txt" }))).rejects.toThrow("SFTP: scans.txt is not a folder");
-    const ro = createSftpDestination(fakeServer({ readOnly: true }).factory);
+    const ro = createSftpDestination(memoryHostKeys(), fakeServer({ readOnly: true }).client);
     await expect(ro.test(ro.parse(config))).rejects.toThrow("SFTP: cannot write in scans: Permission denied");
   });
 
-  test("a changed host key is refused before logging in", async () => {
-    const fake = fakeServer({ hostKey: KEY_B });
-    const d = createSftpDestination(fake.factory);
-    const err = await d.send(outFiles(["a.pdf"]), d.parse({ ...config, hostKey: KEY_A }), meta).catch((e) => e);
-    expect(err).toBeInstanceOf(DeliveryError);
-    expect(err.message).toBe(
-      `Host key of files.example changed (expected ${KEY_A}, got ${KEY_B}). If this is expected, clear the stored host key in the profile.`,
-    );
-    expect(fake.files.size).toBe(0);
-    expect(fake.log.at(-1)).toBe("close");
+  describe("host key, trusted on first use per host:port", () => {
+    test("the first connection stores the server's key; the same key passes again", async () => {
+      const keys = memoryHostKeys();
+      const d = createSftpDestination(keys, fakeServer().client);
+      await d.test(d.parse(config));
+      expect(keys.get("files.example", 22)?.fingerprint).toBe(KEY_A);
+      expect(keys.get("files.example", 2222)).toBeNull();
+      await d.test(d.parse(config));
+    });
+
+    test("a different key is refused before logging in, nothing is uploaded, and the stored key stays", async () => {
+      const keys = memoryHostKeys();
+      keys.set("files.example", 22, KEY_A);
+      const fake = fakeServer({ hostKey: KEY_B });
+      const d = createSftpDestination(keys, fake.client);
+      const err = await d.send(outFiles(["a.pdf"]), d.parse(config), meta).catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(DeliveryError);
+      expect((err as Error).message).toBe(
+        `Host key of files.example changed (expected ${KEY_A}, got ${KEY_B}). If this is expected, use "Forget host key" in the output profile.`,
+      );
+      expect(fake.files.size).toBe(0);
+      expect(fake.log.at(-1)).toBe("close");
+      expect(keys.get("files.example", 22)?.fingerprint).toBe(KEY_A);
+    });
+
+    test("forgetting it trusts the next key", async () => {
+      const keys = memoryHostKeys();
+      keys.set("files.example", 22, KEY_A);
+      keys.forget("files.example", 22);
+      const d = createSftpDestination(keys, fakeServer({ hostKey: KEY_B }).client);
+      await d.test(d.parse(config));
+      expect(keys.get("files.example", 22)?.fingerprint).toBe(KEY_B);
+    });
+
+    test("a failed login stores nothing", async () => {
+      const keys = memoryHostKeys();
+      const auth = Object.assign(new Error("All configured authentication methods failed"), { level: "client-authentication" });
+      const d = createSftpDestination(keys, fakeServer({ fail: auth }).client);
+      await expect(d.test(d.parse(config))).rejects.toThrow("SFTP: login as scanner failed (wrong password or key)");
+      expect(keys.keys.size).toBe(0);
+    });
   });
 
-  test("a cleared host key trusts the new one", async () => {
-    const d = createSftpDestination(fakeServer({ hostKey: KEY_B }).factory);
-    expect(await d.test(d.parse({ ...config, hostKey: "" }))).toEqual({ hostKey: KEY_B });
-  });
-
-  test("send() uploads with the FTP numbering, never overwriting, and learns the host key", async () => {
+  test("send() uploads with the FTP numbering, never overwriting", async () => {
     const fake = fakeServer({ files: ["scans/scan.pdf", "scans/scan-2.pdf"] });
-    const d = createSftpDestination(fake.factory);
-    const r = await d.send(outFiles(["scan.pdf", "other.pdf"]), d.parse(config), meta);
-    expect(r).toEqual({ ref: "scan-3.pdf, other.pdf", learned: { hostKey: KEY_A } });
-    expect(fake.files.get("scans/scan.pdf")).toBe("old");
-    expect(fake.files.get("scans/scan-3.pdf")).toBe("content of scan.pdf");
-    expect(fake.files.get("scans/other.pdf")).toBe("content of other.pdf");
+    const d = createSftpDestination(memoryHostKeys(), fake.client);
+    expect(await d.send(outFiles(["scan.pdf", "other.pdf"]), d.parse(config), meta)).toEqual({ ref: "scan-3.pdf, other.pdf" });
+    expect(text(fake.files.get("scans/scan.pdf"))).toBe("old");
+    expect(text(fake.files.get("scans/scan-3.pdf"))).toBe("content of scan.pdf");
+    expect(text(fake.files.get("scans/other.pdf"))).toBe("content of other.pdf");
   });
 
-  test("send() to the login folder and with a known host key", async () => {
-    const fake = fakeServer({ files: ["scan.pdf"] });
-    const d = createSftpDestination(fake.factory);
-    const r = await d.send(outFiles(["scan.pdf"]), d.parse({ ...config, path: "", hostKey: KEY_A }), meta);
-    expect(r).toEqual({ ref: "scan-2.pdf" });
+  test("send() to the login folder", async () => {
+    const d = createSftpDestination(memoryHostKeys(), fakeServer({ files: ["scan.pdf"] }).client);
+    expect(await d.send(outFiles(["scan.pdf"]), d.parse({ ...config, path: "" }), meta)).toEqual({ ref: "scan-2.pdf" });
+  });
+
+  test("a large file arrives complete, in WRITE_CHUNK pieces at increasing offsets", async () => {
+    const fake = fakeServer();
+    const d = createSftpDestination(memoryHostKeys(), fake.client);
+    const [f] = outFiles(["big.bin"]);
+    const data = randomBytes(WRITE_CHUNK * 20 + 1234);
+    writeFileSync(f!.path, data);
+    await d.send([f!], d.parse(config), meta);
+    expect(fake.files.get("scans/big.bin")!.equals(data)).toBe(true);
+    expect(fake.writes.map((w) => w.position)).toEqual(Array.from({ length: 21 }, (_, i) => i * WRITE_CHUNK));
+    expect(fake.writes.at(-1)!.length).toBe(1234);
   });
 
   test("a name taken between listing and upload moves on to the next number", async () => {
-    const fake = fakeServer();
-    const base = fake.factory;
-    fake.factory = () => {
-      const c = base();
-      return { ...c, list: async () => [] }; // the listing misses scan.pdf, which appears anyway
-    };
-    fake.files.set("scans/scan.pdf", "other writer");
-    const d = createSftpDestination(fake.factory);
+    const fake = fakeServer({ files: ["scans/scan.pdf"], listMisses: true });
+    const d = createSftpDestination(memoryHostKeys(), fake.client);
     expect((await d.send(outFiles(["scan.pdf"]), d.parse(config), meta)).ref).toBe("scan-2.pdf");
-    expect(fake.files.get("scans/scan.pdf")).toBe("other writer");
+    expect(text(fake.files.get("scans/scan.pdf"))).toBe("old");
   });
 
   test("two deliveries of the same name at once get different names", async () => {
     const fake = fakeServer();
-    const d = createSftpDestination(fake.factory);
+    const d = createSftpDestination(memoryHostKeys(), fake.client);
     const c = d.parse(config);
     await Promise.all([d.send(outFiles(["scan.pdf"]), c, meta), d.send(outFiles(["scan.pdf"]), c, meta)]);
     expect([...fake.files.keys()].sort()).toEqual(["scans/scan-2.pdf", "scans/scan.pdf"]);
   });
 
-  test("network, timeout and login errors", async () => {
+  test("network and timeout errors", async () => {
     const refused = Object.assign(new Error("connect ECONNREFUSED 10.0.0.1:22"), { code: "ECONNREFUSED" });
-    let d = createSftpDestination(fakeServer({ fail: refused }).factory);
+    let d = createSftpDestination(memoryHostKeys(), fakeServer({ fail: refused }).client);
     await expect(d.test(d.parse(config))).rejects.toThrow("Cannot reach files.example: ECONNREFUSED");
     const timeout = Object.assign(new Error("Timed out while waiting for handshake"), { level: "client-timeout" });
-    d = createSftpDestination(fakeServer({ fail: timeout }).factory);
+    d = createSftpDestination(memoryHostKeys(), fakeServer({ fail: timeout }).client);
     await expect(d.test(d.parse(config))).rejects.toThrow("Cannot reach files.example: timed out");
-    const auth = Object.assign(new Error("All configured authentication methods failed"), { level: "client-authentication" });
-    d = createSftpDestination(fakeServer({ fail: auth }).factory);
-    await expect(d.test(d.parse(config))).rejects.toThrow("SFTP: login as scanner failed (wrong password or key)");
   });
 
   test("fingerprint() is OpenSSH's SHA256 form", () => {
@@ -470,21 +519,26 @@ describe("ftp", () => {
 });
 
 describe("real servers (optional)", () => {
-  test.skipIf(!process.env.TEST_SFTP_URL)("sftp roundtrip", async () => {
+  test.skipIf(!process.env.TEST_SFTP_URL)("sftp roundtrip", { timeout: 120000 }, async () => {
     // TEST_SFTP_URL=sftp://user:pass@server:port/path
     const u = new URL(process.env.TEST_SFTP_URL!);
-    const d = getDestination("sftp");
+    const keys = memoryHostKeys();
+    const d = createDestinations({ hostKeys: keys })("sftp");
     const c = d.parse({ host: u.hostname, port: Number(u.port || 22), path: u.pathname.slice(1) || ".", username: decodeURIComponent(u.username), password: decodeURIComponent(u.password) });
-    const learned = await d.test(c);
-    expect(learned?.hostKey).toMatch(/^SHA256:/);
+    await d.test(c);
+    const trusted = keys.get(c.host, c.port)!.fingerprint;
+    expect(trusted).toMatch(/^SHA256:/);
     const big = outFiles(["webapp-test-big.bin"])[0]!;
-    writeFileSync(big.path, Buffer.alloc(300 * 1024, 7)); // several write chunks
-    const first = await d.send([...outFiles(["webapp-test.txt"]), big], { ...c, hostKey: learned!.hostKey! }, meta);
-    const second = await d.send(outFiles(["webapp-test.txt"]), { ...c, hostKey: learned!.hostKey! }, meta);
+    const bytes = randomBytes(24 * 1024 * 1024 + 5); // ~100 write chunks
+    writeFileSync(big.path, bytes);
+    console.log(`webapp-test-big.bin sha256 ${createHash("sha256").update(bytes).digest("hex")}`);
+    const first = await d.send([...outFiles(["webapp-test.txt"]), big], c, meta);
+    const second = await d.send(outFiles(["webapp-test.txt"]), c, meta);
     expect(first.ref).not.toBe(second.ref);
     expect(second.ref).toMatch(/^webapp-test-\d+\.txt$/);
-    const wrong = `SHA256:${"A".repeat(43)}`;
-    await expect(d.test({ ...c, hostKey: wrong })).rejects.toThrow(`Host key of ${u.hostname} changed (expected ${wrong}, got ${learned!.hostKey})`);
+    keys.forget(c.host, c.port);
+    keys.set(c.host, c.port, fakeFingerprint("A"));
+    await expect(d.test(c)).rejects.toThrow(`Host key of ${u.hostname} changed (expected ${fakeFingerprint("A")}, got ${trusted})`);
   });
   test.skipIf(!process.env.TEST_FTP_URL)("ftp roundtrip", async () => {
     const u = new URL(process.env.TEST_FTP_URL!);

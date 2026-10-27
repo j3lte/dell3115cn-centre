@@ -113,13 +113,13 @@ encrypted with `APP_SECRET` and never shown again in full.
   it has one. A key that can't be read, or that needs a passphrase that's missing or wrong, is refused when saving.
 - **Folder**: relative to the login folder, or absolute (`/srv/scans`). It must already exist. **Test** checks that
   it exists and that the user can write there, by creating and removing an empty `.centre-test-…` file.
-- **Host key (trust on first use)**: the first successful Test, or the first delivery if the profile was never
-  tested, stores the server's host key fingerprint (`SHA256:…`, as `ssh-keygen -lf` shows it) in the profile; the
-  form shows it under *Host key*. From then on a server that shows another key is refused before logging in, with
-  *Host key of … changed (expected …, got …)*. If the key really changed (server reinstalled, new host keys), press
-  *Forget host key* and save; the next Test trusts the new key. Saving the profile otherwise never clears the stored
-  key (not even from a form opened before the key was stored); changing the host or port does. Check the fingerprint
-  against the server (`ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub`) if you want to be sure.
+- **Host key (trust on first use)**: the first connection to a server (Test or delivery) stores its host key
+  fingerprint (`SHA256:…`, as `ssh-keygen -lf` shows it) for that host and port, shared by every profile that uses
+  them; the form shows it under *Host key*. From then on a server that shows another key is refused before logging
+  in, with *Host key of … changed (expected …, got …)*. If the key really changed (server reinstalled, new host keys),
+  press *Forget host key* (it takes effect at once); the next Test trusts the new key. Check the fingerprint against
+  the server (`ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub`) if you want to be sure. Assistants can forget a key
+  with the MCP tool `forget_sftp_host`; the API has `GET` and `DELETE /api/host-keys?host=…&port=…`.
 - Files that already exist are never overwritten (see the numbering above).
 
 SMB shares are no longer supported (the image no longer contains `smbclient`). An output profile that still uses SMB

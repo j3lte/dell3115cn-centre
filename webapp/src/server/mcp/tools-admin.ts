@@ -161,8 +161,7 @@ export function registerAdminTools(server: McpServer, deps: McpDeps): void {
     {
       description:
         "Create (no id) or update (with id) an output profile: name, format, jpegQuality, filenameTemplate, destination { type, config }. " +
-        "A masked secret value (as returned by get_output_profile) keeps the stored secret. " +
-        "SFTP's hostKey is stored by the server on first use; send hostKey: null to forget it (\"\" keeps it).",
+        "A masked secret value (as returned by get_output_profile) keeps the stored secret.",
       inputSchema: { profile: object },
     },
     (a) =>
@@ -180,7 +179,8 @@ export function registerAdminTools(server: McpServer, deps: McpDeps): void {
     { description: "Check that a saved output profile's destination is reachable.", inputSchema: { id: z.number().int() } },
     (a) =>
       run(async () => {
-        return jsonResult({ ok: true, ...(await profiles.testOutput(a.id)) });
+        await profiles.testOutput(a.id);
+        return jsonResult({ ok: true });
       }),
   );
   server.registerTool(
@@ -191,8 +191,20 @@ export function registerAdminTools(server: McpServer, deps: McpDeps): void {
     },
     (a) =>
       run(async () => {
-        return jsonResult({ ok: true, ...(await profiles.testDestination(a.type, a.config, a.id, "all")) });
+        await profiles.testDestination(a.type, a.config, a.id, "all");
+        return jsonResult({ ok: true });
       }),
+  );
+  server.registerTool(
+    "forget_sftp_host",
+    {
+      description:
+        "Forget the SSH host key an SFTP destination trusted on first use for host:port, after the server's key really changed. " +
+        "The next connection trusts the key the server shows.",
+      inputSchema: { host: z.string().min(1), port: z.number().int().min(1).max(65535).default(22) },
+      annotations: destructive,
+    },
+    (a) => run(() => (deps.services.hostKeys.forget(a.host, a.port), jsonResult({ forgotten: `${a.host}:${a.port}` }))),
   );
   server.registerTool("add_common_profiles", { description: "Add the common input and output profiles that are missing." }, () =>
     run(() => jsonResult(profiles.addCommon())),

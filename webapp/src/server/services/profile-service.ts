@@ -1,5 +1,5 @@
-import { getDestination } from "../destinations";
-import { DESTINATION_TYPES, LEARNED_FIELDS, SECRET_FIELDS, SECRET_MASK, ValidationError, type DestinationType, type Learned } from "../destinations/types";
+import type { Destination, Destinations } from "../destinations";
+import { DESTINATION_TYPES, SECRET_FIELDS, SECRET_MASK, ValidationError, type DestinationType } from "../destinations/types";
 import { validateFilter } from "../pipeline/filters";
 import {
   validateInput,
@@ -23,7 +23,14 @@ export type GuardScope = "targets" | "all";
 
 /** Input and output profiles: validation, masked-secret rules and the checks before a destination is saved or tested. */
 export class ProfileService {
-  constructor(private readonly repo: ProfileRepo) {}
+  constructor(
+    private readonly repo: ProfileRepo,
+    private readonly destinations: Destinations,
+  ) {}
+
+  destination(type: DestinationType): Destination<any> {
+    return this.destinations(type);
+  }
 
   // ---- input profiles
 
@@ -93,11 +100,7 @@ export class ProfileService {
     const d: OutputProfileDraft = { ...draft };
     delete d.needsCredentials;
     if (d.id !== undefined) this.mustOutput(d.id);
-    if (d.destination) {
-      const config = (d.destination.config ?? {}) as Record<string, unknown>;
-      this.guardMaskedSecrets(d.destination.type, config, d.id, scope);
-      d.destination = { ...d.destination, config: this.keepLearned(d.destination.type, config, d.id) };
-    }
+    if (d.destination) this.guardMaskedSecrets(d.destination.type, (d.destination.config ?? {}) as Record<string, unknown>, d.id, scope);
     this.checkOutput(d, d.id);
     validateOutput(d);
     return this.repo.toPublic(this.repo.saveOutput(d));
@@ -111,66 +114,20 @@ export class ProfileService {
     return this.repo.outputExists(id);
   }
 
-  /** Checks that a saved profile's destination is reachable; what it learned (SFTP's host key) is stored and returned. */
-  async testOutput(id: number): Promise<Learned | undefined> {
+  /** Checks that a saved profile's destination is reachable. */
+  async testOutput(id: number): Promise<void> {
     const p = this.getOutputForUse(id);
-    const d = getDestination(p.destination.type);
-    const learned = (await d.test(d.parse(p.destination.config))) ?? undefined;
-    if (learned) this.learn(id, p.destination.type, p.destination.config, learned);
-    return learned;
+    const d = this.destinations(p.destination.type);
+    await d.test(d.parse(p.destination.config));
   }
 
-  /**
-   * Checks a destination configuration before it is saved; `id` is the profile whose stored secrets masked values refer
-   * to. Returns what the destination learned, for the form to save; it is also stored when the profile sends to the same place.
-   */
-  async testDestination(type: string, config: Record<string, unknown>, id: number | undefined, scope: GuardScope): Promise<Learned | undefined> {
+  /** Checks a destination configuration before it is saved; `id` is the profile whose stored secrets masked values refer to. */
+  async testDestination(type: string, config: Record<string, unknown>, id: number | undefined, scope: GuardScope): Promise<void> {
     if (!DESTINATION_TYPES.includes(type as DestinationType)) throw new ValidationError(`Unknown destination: ${type}`);
     const t = type as DestinationType;
-    const d = getDestination(t);
+    const d = this.destinations(t);
     this.guardMaskedSecrets(t, config, id, scope);
-    const learned = (await d.test(d.parse(this.unmaskConfig(t, this.keepLearned(t, config, id), id)))) ?? undefined;
-    if (learned && id !== undefined) this.learn(id, t, config, learned);
-    return learned;
-  }
-
-  /**
-   * Stores fields a destination learned while connecting (SFTP's trusted host key, see destinations/sftp.ts) in the
-   * profile it connected for: only while the profile still has that type and target (`used` is the config it
-   * connected with), and never over a stored value.
-   */
-  learn(id: number, type: DestinationType, used: Record<string, unknown>, learned: Learned): void {
-    const stored = this.repo.getOutput(id);
-    if (!stored || stored.destination.type !== type) return;
-    const cfg = stored.destination.config;
-    if (!this.sameTarget(cfg, used)) return;
-    const fresh = Object.entries(learned).filter(([k]) => !cfg[k]);
-    if (!fresh.length) return;
-    const pub = this.repo.toPublic(stored); // masked secrets keep the sealed ones
-    this.repo.saveOutput({ ...pub, destination: { type, config: { ...pub.destination.config, ...Object.fromEntries(fresh) } } });
-  }
-
-  /**
-   * Server-managed fields (LEARNED_FIELDS: SFTP's host key) of a config from a form or an assistant: `null` forgets the
-   * stored value, a non-empty value replaces it (pins another key), and "" or a missing field keeps the stored one
-   * while the profile has the same type and target, so a form opened before a delivery stored the key can't clear it.
-   */
-  private keepLearned(type: DestinationType, config: Record<string, unknown>, id: number | undefined): Record<string, unknown> {
-    const fields = LEARNED_FIELDS[type];
-    if (!fields) return config;
-    const stored = id !== undefined ? this.repo.getOutput(id) : null;
-    const cfg = stored?.destination.type === type ? stored.destination.config : null;
-    const sameTarget = !!cfg && this.sameTarget(cfg, config);
-    const out = { ...config };
-    for (const f of fields) {
-      if (out[f] === null) out[f] = "";
-      else if ((out[f] === undefined || out[f] === "") && sameTarget && typeof cfg![f] === "string") out[f] = cfg![f];
-    }
-    return out;
-  }
-
-  private sameTarget(a: Record<string, unknown>, b: Record<string, unknown>): boolean {
-    return [...TARGET_FIELDS, "port"].every((k) => String(a[k] ?? "") === String(b[k] ?? ""));
+    await d.test(d.parse(this.unmaskConfig(t, config, id)));
   }
 
   /** Adds the common profiles whose names are missing. */
@@ -209,10 +166,7 @@ export class ProfileService {
     const same = (a: unknown, b: unknown) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
     const only = scope === "targets" ? TARGET_FIELDS : undefined;
     const keys = new Set(
-      [...Object.keys(config), ...Object.keys(stored.destination.config)].filter(
-        // Learned fields (a host key) don't choose where a secret goes; forgetting one must not need the secrets again.
-        (k) => !secrets.includes(k) && !(LEARNED_FIELDS[type] ?? []).includes(k) && (!only || only.includes(k)),
-      ),
+      [...Object.keys(config), ...Object.keys(stored.destination.config)].filter((k) => !secrets.includes(k) && (!only || only.includes(k))),
     );
     for (const k of keys)
       if (!same(config[k], stored.destination.config[k]))
@@ -224,6 +178,6 @@ export class ProfileService {
     if (!draft.destination || !DESTINATION_TYPES.includes(draft.destination.type)) throw new ValidationError(`Unknown destination: ${draft.destination?.type}`);
     const cfg = this.unmaskConfig(draft.destination.type, (draft.destination.config ?? {}) as Record<string, unknown>, id);
     for (const f of SECRET_FIELDS[draft.destination.type]) if (cfg[f] === undefined) cfg[f] = "";
-    getDestination(draft.destination.type).parse(cfg);
+    this.destinations(draft.destination.type).parse(cfg);
   }
 }

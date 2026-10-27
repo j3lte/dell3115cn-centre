@@ -2,7 +2,10 @@ import type { Database } from "bun:sqlite";
 import type { AnalyseClient } from "../analyse-client";
 import type { LiveHub } from "../live";
 import type { PrinterSource } from "../printer";
+import { createDestinations } from "../destinations";
+import type { HostKeyStore } from "../destinations/sftp";
 import { DedaRepo } from "../repos/deda-repo";
+import { HostKeyRepo } from "../repos/host-key-repo";
 import { ProfileRepo } from "../repos/profile-repo";
 import { ScanRepo } from "../repos/scan-repo";
 import { SettingsRepo } from "../repos/settings-repo";
@@ -18,6 +21,8 @@ import { SettingsService } from "./settings-service";
 export type Services = {
   settings: SettingsService;
   profiles: ProfileService;
+  /** SFTP host keys trusted on first use. */
+  hostKeys: HostKeyStore;
   scans: ScanService;
   calibration: CalibrationService;
   printer: PrinterService;
@@ -44,12 +49,13 @@ export type ServicesDeps = {
 /** The composition root: one database and one scanner client behind every service. */
 export function createServices(deps: ServicesDeps): Services {
   const { db, client, hub, dataDir, clock } = deps;
-  const profiles = new ProfileService(new ProfileRepo(db, deps.box));
+  const hostKeys = new HostKeyRepo(db, clock);
+  const profiles = new ProfileService(new ProfileRepo(db, deps.box), createDestinations({ hostKeys }));
   const settings = new SettingsService(new SettingsRepo(db), profiles, deps.secret, deps.onMcpChange);
   const calibration = new CalibrationService(settings, client, clock);
   const scans = new ScanService({ repo: new ScanRepo(db), profiles, settings, calibration, client, hub, dataDir }, { clock });
   const analyse = deps.analyse ?? null;
   const deda = analyse ? new DedaService({ repo: new DedaRepo(db), scans, analyse, dataDir, clock }) : null;
   const printer = new PrinterService(deps.printer, () => settings.read().printerWakeHours, clock);
-  return { settings, profiles, scans, calibration, printer, scanner: client, hub, analyse, deda };
+  return { settings, profiles, hostKeys, scans, calibration, printer, scanner: client, hub, analyse, deda };
 }

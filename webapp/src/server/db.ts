@@ -56,6 +56,10 @@ const MIGRATIONS: string[] = [
   );
   CREATE INDEX deda_scanned ON deda_analyses (scanned_at);
   `,
+  `
+  -- SFTP host keys trusted on first use, per server (host in lower case).
+  CREATE TABLE host_keys (host TEXT NOT NULL, port INTEGER NOT NULL, fingerprint TEXT NOT NULL, first_seen INTEGER NOT NULL, PRIMARY KEY (host, port));
+  `,
 ];
 
 export function openDb(path: string): Database {

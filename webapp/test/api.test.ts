@@ -1,17 +1,17 @@
-import { afterEach, describe, expect, spyOn, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
 import { z } from "@hono/zod-openapi";
 import { hc } from "hono/client";
 import { HTTPException } from "hono/http-exception";
 import { AnalyseClient } from "../src/server/analyse-client";
 import { isUuid } from "../src/server/db";
-import { sftp } from "../src/server/destinations/sftp";
+import { SMB_RETIRED } from "../src/server/destinations/smb";
 import { createApp, type AppType } from "../src/server/http/app";
 import { errorResponse } from "../src/server/http/errors";
 import { exact } from "../src/server/http/schemas";
 import { magickAvailable } from "../src/server/pipeline/magick";
 import { ScanRepo } from "../src/server/repos/scan-repo";
 import { makeColourPnm } from "./fake-service";
-import { scanInsert, withoutDeviceIcc } from "./helpers";
+import { fakeFingerprint, scanInsert, withoutDeviceIcc } from "./helpers";
 import { makeHarness, type Harness } from "./scan-harness";
 
 let h: Harness;
@@ -667,30 +667,27 @@ test("ids sent as digit strings are accepted like integers; other strings stay 4
 
 test("GET /api/features reports analyse off without a client and on with one", async () => {
   const { call } = await setup();
-  expect((await call("GET", "/api/features")).body).toEqual({ analyse: false });
+  expect((await call("GET", "/api/features")).body).toMatchObject({ analyse: false });
   h.services.analyse = new AnalyseClient("http://analyse.invalid");
-  expect((await call("GET", "/api/features")).body).toEqual({ analyse: true });
+  expect((await call("GET", "/api/features")).body).toMatchObject({ analyse: true });
 });
 
-test("destination tests answer the SFTP host key they learned", async () => {
+test("SFTP host keys: read and forget the one trusted for host:port", async () => {
   const { call } = await setup();
-  const key = `SHA256:${"k".repeat(43)}`;
-  const spy = spyOn(sftp, "test").mockResolvedValue({ hostKey: key });
-  try {
-    const config = { host: "files.example", username: "u", password: "pw" };
-    expect((await call("POST", "/api/destinations/test", { type: "sftp", config })).body).toEqual({ ok: true, hostKey: key });
-    const created = await call("POST", "/api/output-profiles", { name: "Server", format: "pdf_multi", jpegQuality: 80, filenameTemplate: "scan", destination: { type: "sftp", config } });
-    expect(created.status).toBe(201);
-    expect((await call("POST", `/api/output-profiles/${created.body.id}/test`)).body).toEqual({ ok: true, hostKey: key });
-    expect((await call("GET", `/api/output-profiles/${created.body.id}`)).body.destination.config).toMatchObject({ hostKey: key, password: "••••" });
-  } finally {
-    spy.mockRestore();
-  }
+  const services = h.services;
+  expect((await call("GET", "/api/host-keys?host=nas.example&port=2222")).status).toBe(404);
+  services.hostKeys.set("nas.example", 2222, fakeFingerprint("a"));
+  const got = await call("GET", "/api/host-keys?host=nas.example&port=2222");
+  expect(got.status).toBe(200);
+  expect(got.body).toMatchObject({ host: "nas.example", port: 2222, fingerprint: fakeFingerprint("a") });
+  expect(typeof got.body.firstSeen).toBe("number");
+  expect((await call("GET", "/api/host-keys?host=nas.example")).status).toBe(404); // port 22 is another server
+  expect((await call("GET", "/api/host-keys?host=nas.example&port=0")).status).toBe(400);
+  expect((await call("DELETE", "/api/host-keys?host=nas.example&port=2222")).status).toBe(204);
+  expect(services.hostKeys.get("nas.example", 2222)).toBeNull();
 });
 
-test("SMB destinations can't be created any more", async () => {
+test("features list the retired destinations with their message", async () => {
   const { call } = await setup();
-  const r = await call("POST", "/api/output-profiles", { name: "NAS", format: "pdf_multi", jpegQuality: 80, filenameTemplate: "scan", destination: { type: "smb", config: { server: "nas", share: "s" } } });
-  expect(r.status).toBe(400);
-  expect(r.body.message).toBe("SMB is no longer supported; choose another destination");
+  expect((await call("GET", "/api/features")).body.retiredDestinations).toEqual({ smb: SMB_RETIRED });
 });

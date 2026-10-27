@@ -1,13 +1,12 @@
 import { outputNames, renderName } from "../../server/output/filename";
 import type { InputProfile, InputProfileDraft, OutputProfile, OutputProfileDraft } from "../types/api";
 import { DEFAULT_FILTER } from "./filter";
-import { DEST_LABEL, FORMAT_LABEL, MODE_LABEL, PAPER_LABEL, RETIRED_DESTS, SOURCE_LABEL, type DestType } from "./labels";
+import { DEST_LABEL, FORMAT_LABEL, MODE_LABEL, PAPER_LABEL, SOURCE_LABEL, type DestType } from "./labels";
 
 export type FieldSpec = {
   key: string;
   label: string;
-  /** "hostKey": SFTP's trusted host key, shown read-only with a button to forget it. */
-  kind?: "text" | "url" | "number" | "secret" | "bool" | "hostKey";
+  kind?: "text" | "url" | "number" | "secret" | "bool";
   /** A secret pasted as several lines (a private key). */
   multiline?: boolean;
   hint?: string;
@@ -32,7 +31,6 @@ export const DEST_FIELDS: Record<DestType, FieldSpec[]> = {
       hint: "Paste the whole key file. Its public key goes in the server's authorized_keys.",
     },
     { key: "passphrase", label: "Passphrase", kind: "secret", hint: "Only for a key that has one." },
-    { key: "hostKey", label: "Host key", kind: "hostKey" },
   ],
   ftp: [
     { key: "host", label: "Host", placeholder: "ftp.example.org" },
@@ -61,16 +59,14 @@ export const DEST_FIELDS: Record<DestType, FieldSpec[]> = {
   smb: [],
 };
 
-/** The destination picker: retired types only for a profile that still uses one. */
-export function destOptions(current: DestType): (readonly [DestType, string])[] {
-  return (Object.keys(DEST_LABEL) as DestType[]).filter((t) => t === current || !RETIRED_DESTS.includes(t)).map((t) => [t, DEST_LABEL[t]] as const);
+/** A destination's name; a retired one (see `useFeatures`) says it is no longer supported. */
+export function destLabel(type: DestType, retired: Record<string, string>): string {
+  return retired[type] ? `${DEST_LABEL[type]} (no longer supported)` : DEST_LABEL[type];
 }
 
-/** A destination config with one field changed. Another SFTP host or port is another server: its stored host key goes. */
-export function withDestField(type: DestType, config: Record<string, unknown>, key: string, value: unknown): Record<string, unknown> {
-  const next = { ...config, [key]: value };
-  if (type === "sftp" && (key === "host" || key === "port") && config.hostKey) next.hostKey = "";
-  return next;
+/** The destination picker: retired types only for a profile that still uses one. */
+export function destOptions(current: DestType, retired: Record<string, string>): (readonly [DestType, string])[] {
+  return (Object.keys(DEST_LABEL) as DestType[]).filter((t) => t === current || !retired[t]).map((t) => [t, destLabel(t, retired)] as const);
 }
 
 export const NEW_INPUT: InputProfileDraft = { name: "", source: "adf", mode: "gray", dpi: 300, paper: "a4", autoOrient: true, threshold: 128, filter: DEFAULT_FILTER };
