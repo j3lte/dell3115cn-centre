@@ -1,9 +1,11 @@
+import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
-/**
- * The app folder holding `assets/` and `vendor/`: env APP_DIR (the Docker image runs a bundle from `dist/` and sets
- * it), else the webapp folder this source file lives in.
- */
-export function appDir(env: Record<string, string | undefined> = process.env): string {
-  return env.APP_DIR || fileURLToPath(new URL("../..", import.meta.url));
+/** Set to true by build.ts in the production bundle; undefined when running from source. */
+declare const BUNDLED: boolean | undefined;
+export const bundled = typeof BUNDLED !== "undefined" && BUNDLED;
+
+/** The folder holding `assets/` and `vendor/`: the webapp folder, which is also the parent of the bundle's `dist/`. */
+export function appDir(): string {
+  return bundled ? dirname(import.meta.dir) : fileURLToPath(new URL("../..", import.meta.url));
 }

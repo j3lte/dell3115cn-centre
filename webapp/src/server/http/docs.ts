@@ -6,13 +6,12 @@ import type { Handler } from "hono";
 import { appDir } from "../app-dir";
 import { fail } from "./errors";
 
-/** Where the image keeps Scalar's bundle (`vendor/scalar.js` in the app folder; the Dockerfile copies it there). */
+/** Scalar's bundle as build.ts copies it for the production bundle (`vendor/scalar.js` in the app folder). */
 const vendoredBundle = join(appDir(), "vendor", "scalar.js");
 
 /**
- * Scalar's single-file browser bundle: the vendored copy, else the dev dependency's `dist/browser/standalone.js` (not an
- * exported path, so found next to the package entry `dist/index.js`). A production install has neither package nor copy
- * unless the image put the copy there.
+ * Scalar's single-file browser bundle: build.ts's copy, else (running from source) the dev
+ * dependency's `dist/browser/standalone.js` (not an exported path, so found next to the package entry `dist/index.js`).
  */
 function findScalarBundle(): string | undefined {
   if (existsSync(vendoredBundle)) return vendoredBundle;

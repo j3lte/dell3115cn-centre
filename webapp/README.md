@@ -104,8 +104,8 @@ bun test                                   # unit + integration tests (some skip
 docker build --target test .               # full suite in the Alpine image
 # scanner simulator + dev server (see ../CLAUDE.md for the simulator command)
 SERVICE_URL=http://localhost:8765 DATA_DIR=./data bun --hot src/server/index.ts
-# production bundle as in the image (server + UI in dist/, run from there; only sharp stays in node_modules)
-bun build.ts && cd dist && APP_DIR=.. SERVICE_URL=http://localhost:8765 DATA_DIR=../data bun index.js
+# the production bundle the image runs (see build.ts)
+bun build.ts && cd dist && SERVICE_URL=http://localhost:8765 DATA_DIR=../data bun index.js
 # with the Analyse section: run the analyse service (cd ../analyse && docker compose up --build) and add
 # ANALYSE_ENDPOINT=http://localhost:8770
 ```

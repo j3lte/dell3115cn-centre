@@ -17,41 +17,35 @@ FROM base AS deps
 COPY package.json bun.lock ./
 RUN bun install --frozen-lockfile
 
-# The API reference page's script is a dev dependency (it pulls in Vue and more); only its one bundle goes in the image.
-FROM deps AS vendor
-RUN mkdir /vendor && cp node_modules/@scalar/api-reference/dist/browser/standalone.js /vendor/scalar.js
+# sharp, a native addon with its own libvips, is the one package the bundle can't contain: the locked copy, its
+# dependencies and only the musl build of its binaries.
+RUN mkdir -p /sharp/@img \
+ && cp -r node_modules/sharp node_modules/detect-libc node_modules/semver /sharp/ \
+ && cp -r node_modules/@img/colour node_modules/@img/sharp-linuxmusl-* node_modules/@img/sharp-libvips-linuxmusl-* /sharp/@img/
 
 FROM deps AS test
 COPY . .
-RUN bun test && touch /tmp/tests-passed
+RUN bun test
 
-# The server and its UI (React, Tailwind) bundled into dist/ (build.ts): no node_modules needed at run time ...
+# The server and its UI bundled into dist/ (build.ts), after the tests: the image needs no source or node_modules ...
 FROM test AS build
 RUN bun build.ts
-
-# ... except sharp, a native addon with its own libvips: only it (the locked version) and its dependencies.
-FROM base AS sharp
-COPY --from=deps /app/node_modules/sharp/package.json /tmp/sharp.json
-RUN bun -e 'const v = (await Bun.file("/tmp/sharp.json").json()).version; await Bun.write("package.json", JSON.stringify({ dependencies: { sharp: v } }))' \
- && bun install --production
 
 FROM base AS runtime
 ENV NODE_ENV=production \
     PORT=8080 \
-    DATA_DIR=/data \
-    APP_DIR=/app
-COPY --from=sharp /app/node_modules ./node_modules
+    DATA_DIR=/data
+# ... except sharp (see the deps stage).
+COPY --from=deps /sharp ./node_modules
 COPY --from=build /app/dist ./dist
+COPY --from=build /app/vendor ./vendor
 COPY assets ./assets
-COPY --from=vendor /vendor ./vendor
-# Make the runtime image depend on the test stage, so a failing suite fails the build.
-COPY --from=test /tmp/tests-passed /tmp/tests-passed
 RUN mkdir -p /data && chown bun:bun /data
 USER bun
 EXPOSE 8080
 VOLUME /data
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s \
-  CMD bun -e "fetch('http://localhost:'+(process.env.PORT||8080)+'/api/status').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
-# Bun finds the bundled UI chunks relative to the working directory, so run from dist/.
+  CMD wget -qO /dev/null "http://localhost:${PORT}/api/status" || exit 1
+# Bun finds the bundled UI's files relative to the working directory, so run from dist/.
 WORKDIR /app/dist
 CMD ["bun", "index.js"]
