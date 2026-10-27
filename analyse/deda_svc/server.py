@@ -42,6 +42,7 @@ def _parse_dpi(query: str) -> int:
 class Handler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
     server_version = "analyse"
+    timeout = 60  # seconds a socket read may stall: a dead client must not hold a thread (or the lock) forever
 
     def log_message(self, fmt, *args):  # replaced by _log: never log request content
         pass
@@ -86,7 +87,10 @@ class Handler(BaseHTTPRequestHandler):
         except Exception:
             log.exception("unhandled error")
             self.close_connection = True
-            self._json(500, {"error": "internal"})
+            try:
+                self._json(500, {"error": "internal"})
+            except OSError:
+                pass  # client already gone
         finally:
             self._log(status, started)
 
@@ -110,19 +114,24 @@ class Handler(BaseHTTPRequestHandler):
         if length == 0:
             self._json(400, {"error": "invalid", "message": "empty body"})
             return 400
-        data = self.rfile.read(length)
-        if len(data) != length:
-            self.close_connection = True
-            self._json(400, {"error": "invalid", "message": "incomplete body"})
-            return 400
-        try:
-            with _analyse_lock:
+        # Read under the lock too: at most one upload (up to MAX_BODY) is in memory at a time.
+        with _analyse_lock:
+            try:
+                data = self.rfile.read(length)
+            except OSError:  # includes the read timeout of a stalled client
+                self.close_connection = True
+                return 408
+            if len(data) != length:
+                self.close_connection = True
+                self._json(400, {"error": "invalid", "message": "incomplete body"})
+                return 400
+            try:
                 result = report.analyse(data, dpi)
-        except ValueError as e:
+            except ValueError as e:
+                data = None
+                self._json(400, {"error": "invalid", "message": str(e)})
+                return 400
             data = None
-            self._json(400, {"error": "invalid", "message": str(e)})
-            return 400
-        data = None
         self._json(200, result)
         return 200
 
@@ -132,13 +141,13 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         self._handle("POST")
 
-    def do_PUT(self):  # noqa: F811
+    def do_PUT(self):
         self._handle("PUT")
 
-    def do_DELETE(self):  # noqa: F811
+    def do_DELETE(self):
         self._handle("DELETE")
 
-    def do_PATCH(self):  # noqa: F811
+    def do_PATCH(self):
         self._handle("PATCH")
 
 
