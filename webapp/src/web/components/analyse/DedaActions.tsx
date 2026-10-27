@@ -11,11 +11,12 @@ export function DedaActions() {
   return (
     <div className="card">
       <p className="hint">Put a printed page face down on the glass, or analyse a colour page you scanned before.</p>
-      <div className="flex flex-wrap gap-2.5">
-        <button className="btn btn-primary flex-1" disabled={scan.isPending} onClick={() => scan.mutate()}>
+      {/* Stacked full width on a phone: side by side the labels do not fit. */}
+      <div className="flex flex-col gap-2.5 sm:flex-row">
+        <button className="btn btn-primary sm:flex-1" disabled={scan.isPending} onClick={() => scan.mutate()}>
           Scan page from glass
         </button>
-        <button className="btn flex-1" onClick={() => setPicking(true)}>
+        <button className="btn sm:flex-1" onClick={() => setPicking(true)}>
           Pick from History
         </button>
       </div>

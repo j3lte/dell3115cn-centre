@@ -29,17 +29,18 @@ export const DedaItem = memo(function DedaItem({ analysis: a }: { analysis: Deda
 
   return (
     <li className="card">
+      {/* On a phone the name (or the rename form) takes the whole first line and the buttons go below it. */}
       <div className="flex flex-wrap items-center gap-2">
         {draft === null ? (
           <>
-            <h2 className="m-0 min-w-0 flex-1 truncate text-lg font-bold">{name}</h2>
+            <h2 className="m-0 w-full min-w-0 text-lg font-bold [overflow-wrap:anywhere] sm:w-auto sm:flex-1 sm:truncate">{name}</h2>
             <button className="btn btn-sm" onClick={() => setDraft(name)}>
               Rename
             </button>
           </>
         ) : (
           <form
-            className="flex min-w-0 flex-1 gap-2"
+            className="flex w-full min-w-0 gap-2 sm:w-auto sm:flex-1"
             onSubmit={(e) => {
               e.preventDefault();
               save();
