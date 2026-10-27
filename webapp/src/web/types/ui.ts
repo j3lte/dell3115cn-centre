@@ -1,7 +1,7 @@
 import type { LiveMessage } from "../../server/live";
 import type { Filter, InputProfile, OutputProfile, PrinterView, ScannerStatus, ScanView } from "./api";
 
-export type Route = "scan" | "history" | "printer" | "profiles" | "settings";
+export type Route = "scan" | "history" | "analyse" | "printer" | "profiles" | "settings";
 
 /** Profile kind as it appears in the route: `#/profiles/in/<id>`, `#/profiles/out/new`. */
 export type ProfileKind = "in" | "out";

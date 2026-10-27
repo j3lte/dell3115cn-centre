@@ -10,3 +10,6 @@ export const mm = (v: number) => String(Math.round(v * 10) / 10);
 export const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
 export const cx = (...c: (string | false | null | undefined)[]) => c.filter(Boolean).join(" ");
+
+/** Full date and time with seconds, in the browser's locale. */
+export const formatFull = (ms: number) => new Date(ms).toLocaleString();

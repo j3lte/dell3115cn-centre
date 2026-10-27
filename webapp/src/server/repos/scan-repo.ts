@@ -1,8 +1,9 @@
 import type { Database } from "bun:sqlite";
 
-/** `ready`: an assistant (MCP) scan that has been scanned and not delivered; it never sits in the review tray. */
+/** `ready`: an assistant (MCP) or analyse scan that has been scanned and not delivered; it never sits in the review tray. */
 export type ScanStatus = "scanning" | "review" | "ready" | "delivering" | "done" | "failed" | "cancelled";
-export type ScanOrigin = "ui" | "button" | "mcp";
+/** analyse: a temporary scan made for an analysis (Analyse → Tracking dots), deleted when it ends. */
+export type ScanOrigin = "ui" | "button" | "mcp" | "analyse";
 export type DeliveryStatus = "sending" | "sent" | "failed";
 
 /** The scan, page and delivery tables. SQL only; rules live in `ScanService`. */
@@ -58,7 +59,7 @@ export class ScanRepo {
     this.db.transaction(() => {
       this.db
         .query(
-          "UPDATE scans SET status = CASE origin WHEN 'mcp' THEN 'ready' ELSE 'review' END, review = 1, problem = coalesce(problem || '; ', '') || 'Scan interrupted by a restart' WHERE status = 'scanning' AND page_count > 0",
+          "UPDATE scans SET status = CASE WHEN origin IN ('mcp', 'analyse') THEN 'ready' ELSE 'review' END, review = 1, problem = coalesce(problem || '; ', '') || 'Scan interrupted by a restart' WHERE status = 'scanning' AND page_count > 0",
         )
         .run();
       this.db.query("UPDATE scans SET status = 'failed', error = 'Interrupted by a restart' WHERE status = 'scanning'").run();
@@ -98,6 +99,24 @@ export class ScanRepo {
             "SELECT rowid AS seq, * FROM scans WHERE expires_at IS NULL AND created_at < ? ORDER BY created_at DESC, rowid DESC LIMIT ?",
           )
           .all(before, limit);
+  }
+
+  /**
+   * Colour pages of at least `minDpi` in the newest `limit` stored scans that have one, scans newest first and pages
+   * in order (for the tracking-dot page picker).
+   */
+  colourPages(minDpi: number, limit: number): (Pick<PageRow, "scan_id" | "n" | "dpi" | "mode"> & { created_at: number })[] {
+    return this.db
+      .query<Pick<PageRow, "scan_id" | "n" | "dpi" | "mode"> & { created_at: number }, [number, number, number]>(
+        `SELECT p.scan_id, p.n, p.dpi, p.mode, s.created_at
+         FROM pages p JOIN scans s ON s.id = p.scan_id
+         WHERE p.mode = 'color' AND p.dpi >= ? AND p.scan_id IN (
+           SELECT s2.id FROM scans s2
+           WHERE s2.expires_at IS NULL AND EXISTS (SELECT 1 FROM pages p2 WHERE p2.scan_id = s2.id AND p2.mode = 'color' AND p2.dpi >= ?)
+           ORDER BY s2.created_at DESC, s2.rowid DESC LIMIT ?)
+         ORDER BY s.created_at DESC, s.rowid DESC, p.n`,
+      )
+      .all(minDpi, minDpi, limit);
   }
 
   /** Scans in progress, every scan in the review tray, and the most recent scan. */

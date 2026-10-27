@@ -9,6 +9,11 @@ Notable changes per release. Releases are tagged `x.y.z`; each heading links to 
   off); the Printer tab shows when the printer was last read. Assistants get a fresh report from the new MCP tool
   `refresh_scanner_status`. On an existing print server, disable the timer:
   `sudo systemctl disable --now dell3115cn-supplies.timer`.
+- New *Analyse* section in the web app: **Tracking dots** finds the yellow tracking dots a colour laser printer puts
+  on every page and decodes them with DEDA, from a page scanned on the glass (not kept in History) or a colour page
+  from History, with an overview, close-ups and the decoded fields; entries can be renamed and deleted. It needs the
+  new optional analyse service, image `ghcr.io/j3lte/dell3115cn-centre-analyse` (GPL-3.0-or-later), and
+  `ANALYSE_ENDPOINT` on the web app; see `docs/ANALYSE.md`.
 
 ## [1.0.0](https://github.com/j3lte/dell3115cn-centre/commits/1.0.0)
 

@@ -12,6 +12,8 @@ services:
       SERVICE_URL: ${SERVICE_URL:?set SERVICE_URL, e.g. http://<pi-host>:8765}
       APP_SECRET: ${APP_SECRET:-}
       TZ: ${TZ:-UTC}
+      # The Analyse section (tracking dots): uncomment this and the analyse service below.
+      # ANALYSE_ENDPOINT: http://analyse:8770
     volumes:
       - ./data:/data
       # The scanner's colour profile (Dell's, not included; see assets/README.md) is baked in when it is in assets/
@@ -19,3 +21,8 @@ services:
       # Folder destinations write inside the container; mount the target here, e.g.:
       # - /srv/archive:/archive
     restart: unless-stopped
+  # Optional: tracking-dot analysis (DEDA), GPL-3.0-or-later; see docs/ANALYSE.md in the repository root.
+  # analyse:
+  #   image: ghcr.io/j3lte/dell3115cn-centre-analyse:latest
+  #   mem_limit: 1536m    # a 600 dpi page needs up to about 1 GiB while it is analysed
+  #   restart: unless-stopped

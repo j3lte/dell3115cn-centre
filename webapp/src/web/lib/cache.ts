@@ -1,5 +1,5 @@
 import type { InfiniteData, QueryClient } from "@tanstack/react-query";
-import type { ScanView, Settings } from "../types/api";
+import type { DedaView, ScanView, Settings } from "../types/api";
 import { keys } from "./query";
 
 /**
@@ -62,3 +62,20 @@ export const deepLinkId = (selectedId: string | undefined, listed: boolean, dele
  */
 export const autoLoadNext = (q: { hasNextPage: boolean; isFetching: boolean; isFetchNextPageError: boolean }) =>
   q.hasNextPage && !q.isFetching && !q.isFetchNextPageError;
+
+/**
+ * The server sent a newer view of a tracking-dot analysis (a mutation's answer): it replaces the cached one, or a new
+ * one is put in its place by scan time, newest first, like the server lists them. An uncached list stays uncached.
+ */
+export function applyDeda(qc: QueryClient, view: DedaView): void {
+  qc.setQueryData<DedaView[]>(keys.deda, (list) => {
+    if (!list) return list;
+    if (list.some((a) => a.id === view.id)) return list.map((a) => (a.id === view.id ? view : a));
+    return [...list, view].sort((a, b) => b.scannedAt - a.scannedAt);
+  });
+}
+
+/** An analysis was deleted: it leaves the cached list. */
+export function forgetDeda(qc: QueryClient, id: string): void {
+  qc.setQueryData<DedaView[]>(keys.deda, (list) => list?.filter((a) => a.id !== id));
+}

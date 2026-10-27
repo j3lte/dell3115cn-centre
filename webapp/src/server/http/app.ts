@@ -1,5 +1,6 @@
 import type { Context } from "hono";
 import type { Services } from "../services";
+import { analyseController } from "./controllers/analyse";
 import { filesController } from "./controllers/files";
 import { profilesController } from "./controllers/profiles";
 import { scansController } from "./controllers/scans";
@@ -26,7 +27,8 @@ export function createApp(services: Services) {
     .route("/", systemController(services))
     .route("/", profilesController(services)).route("/", scansController(services))
     .route("/", filesController(services))
-    .route("/", settingsController(services));
+    .route("/", settingsController(services))
+    .route("/", analyseController(services));
 
   routed.use("/api/openapi.json", async (c, next) => {
     await next();

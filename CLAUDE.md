@@ -12,12 +12,14 @@ was reverse-engineered and is documented in `docs/PROTOCOL.md`.
 | `docs/PROTOCOL.md` | The USB scan protocol (authoritative). Read it before touching scanner code. |
 | `docs/PRINTER.md` | The device, firmware, CUPS analysis, printing speed, PCL XL driver, status record (supplies, alerts, page count), network port. |
 | `docs/SCAN-QUALITY.md` | Resolution and bit-depth limits, measured sharpness, deconvolution, tracking dots. |
+| `docs/ANALYSE.md` | User docs for the web app's Analyse section (tracking dots, DEDA) and the `analyse/` service: detection, API, privacy. |
 | `docs/REVERSE-ENGINEERING.md` | How the Dell drivers were decompiled and findings verified. |
 | `docs/screenshots/` | Web app screenshots for the READMEs (see Workflow). |
 | `docs/architecture.svg`, `docs/dell-3115cn.jpg` | README diagram (light/dark via `prefers-color-scheme`) and printer photo (© Dell). |
 | `scanner-service/` | Python service on the print server: owns USB interface 0, HTTP + SSE API (`scan3115` package). |
 | `webapp/` | Bun + TypeScript + React app in Docker: profiles, filters, outputs, destinations, history, MCP server (`src/server/mcp/`). Server layers: `src/server/repos/` (SQLite), `src/server/services/` (logic), `src/server/http/` (Hono routes, OpenAPI). Web UI in `src/web/` (see Web UI code), its tests in `test/web/`. |
 | `webapp/docs/PROFILES.md` | User docs for input/output profiles. Update it with `src/server/common-profiles.ts`, filters, formats or destinations. |
+| `analyse/` | DEDA tracking-dot analysis service (Python, GPL-3.0-or-later; own `Dockerfile` with a `test` stage, image `ghcr.io/j3lte/dell3115cn-centre-analyse`). The web app talks to it over HTTP via `ANALYSE_ENDPOINT` and never imports from it. |
 | `cups/` | CUPS print driver: PCL XL filter + PPD, image filter, supply-level backend, tests. |
 | `tools/scan3115.py` | Single-file prototype scanner (verified on hardware); reference for byte sequences. |
 | `CHANGELOG.md` | Changes per release; new items go under `## [Unreleased]` (see Workflow). |
@@ -33,6 +35,7 @@ was reverse-engineered and is documented in `docs/PROTOCOL.md`.
 - Scanner service in simulator mode: `cd scanner-service && SCAN3115_SIM=1 SCAN3115_SPOOL=/tmp/scan3115 uv run --python 3.11 python -m scan3115`
 - Webapp tests: `cd webapp && bun test`; typecheck: `bunx tsc --noEmit -p .`; on Debian with ImageMagick/Tesseract/smbclient: `docker build --target test webapp`
 - Webapp dev: `cd webapp && SERVICE_URL=http://localhost:8765 DATA_DIR=./data bun --hot src/server/index.ts`
+- Analyse service tests: `cd analyse && uv run --with pytest pytest -q`; in its container: `docker build --target test analyse`
 - CUPS filter tests: `uv run --with pytest pytest cups/tests`
 - Release script tests (changelog, version): `uv run --with pytest pytest tools/tests`
 - Code index (GitNexus, optional): `gitnexus analyze --skip-agents-md` from the repo root writes a local index to
@@ -56,10 +59,12 @@ was reverse-engineered and is documented in `docs/PROTOCOL.md`.
 - **Commit messages: short and to the point.** Conventional Commits style (`feat(webapp): …`, `fix(cups): …`,
   `docs: …`), a subject line that says what changed, and a body only when the why isn't obvious.
 - **CI** (`.github/workflows/ci.yml`) must pass before merging: service, CUPS and release script
-  tests (Debian 12 arm64, like the print server), webapp typecheck, and the image build with its test stage.
+  tests (Debian 12 arm64, like the print server), webapp typecheck, the webapp image build with its test stage, and
+  the `analyse` job (`docker build analyse`, which runs the tests).
 - **Releases**: run the manual *Release* workflow (`.github/workflows/release.yml`: patch, minor or major bump of the
   latest tag, or an exact version; `tools/version.py`) or push a tag `x.y.z` (semver, no `v`) on `main`; CI publishes
-  `ghcr.io/j3lte/dell3115cn-centre:x.y.z` and `:latest`. Pushes to `main` publish `:build-<short commit hash>` only.
+  `ghcr.io/j3lte/dell3115cn-centre:x.y.z` and `:latest`, and the same tags of
+  `ghcr.io/j3lte/dell3115cn-centre-analyse`. Pushes to `main` publish `:build-<short commit hash>` only.
   After publishing a release, CI renames `## [Unreleased]` in `CHANGELOG.md` to `## [x.y.z](<compare link>)`, puts
   a new empty `## [Unreleased]` (followed by three blank lines) above it, commits that to `main` and creates the
   GitHub release with the same items (`tools/changelog.py`). If `[Unreleased]` is empty, the release lists its

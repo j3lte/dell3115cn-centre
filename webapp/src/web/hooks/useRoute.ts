@@ -1,8 +1,8 @@
-import { ROUTES } from "../helpers/routes";
 import type { Route } from "../types/ui";
 import { useHashParts } from "./useHashParts";
 
-export function useRoute(): Route {
+/** The current page; one that isn't offered (`visible`) falls back to the first. */
+export function useRoute(visible: Route[]): Route {
   const r = useHashParts()[0] as Route;
-  return ROUTES.includes(r) ? r : "scan";
+  return visible.includes(r) ? r : "scan";
 }

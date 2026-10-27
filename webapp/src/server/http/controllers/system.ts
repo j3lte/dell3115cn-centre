@@ -1,7 +1,7 @@
 import { createRoute, z } from "@hono/zod-openapi";
 import type { Services } from "../../services";
 import { errBody, forbidden, json, jsonBody, newRouter } from "../router";
-import { PrinterViewSchema, ScannerStatusSchema } from "../schemas";
+import { FeaturesSchema, PrinterViewSchema, ScannerStatusSchema } from "../schemas";
 
 const status = createRoute({
   method: "get",
@@ -9,6 +9,14 @@ const status = createRoute({
   tags: ["System"],
   summary: "Scanner service and printer connection state",
   responses: { 200: jsonBody(ScannerStatusSchema, "The scanner service's last known state") },
+});
+
+const features = createRoute({
+  method: "get",
+  path: "/api/features",
+  tags: ["System"],
+  summary: "Optional features this deployment has switched on",
+  responses: { 200: jsonBody(FeaturesSchema, "`analyse` is true when ANALYSE_ENDPOINT is set") },
 });
 
 const printer = createRoute({
@@ -49,6 +57,7 @@ const connect = createRoute({
 export function systemController(s: Services) {
   return newRouter()
     .openapi(status, (c) => json(c, s.scanner.status))
+    .openapi(features, (c) => json(c, { analyse: s.analyse !== null }))
     .openapi(printer, async (c) => json(c, await s.printer.get()))
     .openapi(refreshPrinter, async (c) => {
       const { ifStale } = c.req.valid("query");

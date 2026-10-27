@@ -99,3 +99,6 @@ example with an FFT. [DEDA](https://github.com/dfd-tud/deda) (`deda_parse_print`
 the faint dots in a raw scan; it does decode a clean redraw of the detected dot positions. On this printer the decoded
 "timestamp" was identical on prints made 25 minutes apart, and the decoded "serial" did not match any number the
 printer reports, so what it encodes on this model is unclear. DEDA can also make an anonymisation mask.
+
+The web app's **Analyse → Tracking dots** section does this for you, from a scan on the glass or a colour page in
+History: see [`ANALYSE.md`](ANALYSE.md).

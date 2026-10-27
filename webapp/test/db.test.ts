@@ -20,7 +20,36 @@ test("a new database gets the whole schema in one version", () => {
   expect(cols("input_profiles").find((c) => c.name === "depth")?.dflt_value).toBe("8");
   expect(cols("input_profiles").some((c) => c.name === "filter")).toBe(true);
   expect(cols("pages").some((c) => c.name === "filter")).toBe(true);
-  expect(db.query<{ version: number }, []>("SELECT version FROM schema_version").get()!.version).toBe(1);
+  expect(db.query<{ version: number }, []>("SELECT version FROM schema_version").get()!.version).toBe(2);
+});
+
+const version = (db: ReturnType<typeof openDb>) => db.query<{ version: number }, []>("SELECT version FROM schema_version").get()!.version;
+const dedaCols = (db: ReturnType<typeof openDb>) =>
+  db.query<{ name: string }, []>("PRAGMA table_info(deda_analyses)").all().map((c) => c.name);
+
+test("a fresh database is at version 2 with deda_analyses", () => {
+  const db = openDb(":memory:");
+  expect(version(db)).toBe(2);
+  expect(dedaCols(db)).toEqual([
+    "id", "name", "status", "source", "scan_id", "page", "dpi", "scanned_at", "analysed_at",
+    "found", "dots", "grid_score", "decode", "decode_error", "error", "images",
+  ]);
+  expect(db.query<{ name: string }, []>("SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'deda_scanned'").get()).not.toBeNull();
+  db.exec("INSERT INTO deda_analyses (id, name, status, source, scanned_at) VALUES ('d', 'n', 'scanning', 'scan', 1)");
+  expect(db.query<{ images: string }, []>("SELECT images FROM deda_analyses").get()!.images).toBe("[]");
+});
+
+test("a version-1 database migrates to version 2 and keeps its data", () => {
+  const p = tmp("db.sqlite");
+  const old = openDb(p);
+  old.exec("DROP TABLE deda_analyses; UPDATE schema_version SET version = 1");
+  old.exec("INSERT INTO scans (id, created_at, input_profile, status) VALUES ('s', 1, '{}', 'done')");
+  old.close();
+  const db = openDb(p);
+  expect(version(db)).toBe(2);
+  expect(tables(db)).toContain("deda_analyses");
+  expect(db.query<{ n: number }, []>("SELECT count(*) AS n FROM scans").get()!.n).toBe(1);
+  db.close();
 });
 
 test("deleting a scan deletes its pages and deliveries", () => {

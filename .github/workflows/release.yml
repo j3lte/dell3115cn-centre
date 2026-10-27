@@ -1,5 +1,5 @@
 # Manual release (Actions → Release → Run workflow): tags the head of main with the next version and starts CI on that
-# tag, which tests, publishes the image as "x.y.z" and "latest", and creates the GitHub release and CHANGELOG.md
+# tag, which tests, publishes the web app and analyse images as "x.y.z" and "latest", and creates the GitHub release and CHANGELOG.md
 # section. Choose major, minor or patch to bump the latest release, or type an exact version.
 name: Release
 

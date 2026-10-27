@@ -1,5 +1,5 @@
-# Tests every push and pull request and test-builds the web app image. Publishes the image to GitHub Container
-# Registry (linux/amd64 + linux/arm64): a release tag x.y.z (no "v") as "x.y.z" and "latest"; every other push to
+# Tests every push and pull request and test-builds the web app image and the analyse image. Publishes both images
+# (web app and -analyse) to GitHub Container Registry (linux/amd64 + linux/arm64): a release tag x.y.z (no "v") as "x.y.z" and "latest"; every other push to
 # main as "build-<short commit hash>". The release workflow (release.yml) starts it on a new tag with workflow_dispatch,
 # because a tag pushed by a workflow does not trigger the push event.
 name: CI
@@ -69,17 +69,54 @@ jobs:
           cache-from: type=gha,scope=webapp-amd64
           cache-to: type=gha,mode=max,scope=webapp-amd64
 
+  # DEDA analysis service (GPL-3.0-or-later): the image's "test" stage runs its pytest suite; the runtime stage copies a
+  # marker from it, so a plain build of the image runs the tests too.
+  analyse:
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v4
+      - name: Test and build the analyse image
+        run: docker build analyse
+
   # Publish (tags and main, not pull requests): build each platform on a native runner, push by digest, then tag one multi-platform image.
   image:
     if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/'))
-    needs: [scanner-service, cups, tools, webapp]
+    needs: [scanner-service, cups, tools, webapp, analyse]
     strategy:
+      fail-fast: false # a broken analyse leg must not cancel the web app legs
       matrix:
         include:
-          - platform: linux/amd64
+          - component: webapp
+            suffix: ""
+            licenses: ""
+            title: ""
+            description: ""
+            platform: linux/amd64
             runner: ubuntu-24.04
             arch: amd64
-          - platform: linux/arm64
+          - component: webapp
+            suffix: ""
+            licenses: ""
+            title: ""
+            description: ""
+            platform: linux/arm64
+            runner: ubuntu-24.04-arm
+            arch: arm64
+          - component: analyse
+            suffix: -analyse
+            licenses: GPL-3.0-or-later
+            title: dell3115cn-centre-analyse
+            description: DEDA tracking-dot analysis for the Dell 3115cn Centre web app
+            platform: linux/amd64
+            runner: ubuntu-24.04
+            arch: amd64
+          - component: analyse
+            suffix: -analyse
+            licenses: GPL-3.0-or-later
+            title: dell3115cn-centre-analyse
+            description: DEDA tracking-dot analysis for the Dell 3115cn Centre web app
+            platform: linux/arm64
             runner: ubuntu-24.04-arm
             arch: arm64
     runs-on: ${{ matrix.runner }}
@@ -89,26 +126,33 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - name: Lower-case image name
-        run: echo "IMAGE=${IMAGE,,}" >> "$GITHUB_ENV"
+        run: echo "IMAGE=${IMAGE,,}${SUFFIX}" >> "$GITHUB_ENV"
+        env:
+          SUFFIX: ${{ matrix.suffix }}
       - uses: docker/setup-buildx-action@v4
       - uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+      # The analyse image is GPL-3.0-or-later, not the repository's Apache-2.0: override the labels taken from the repository.
       - id: meta
         uses: docker/metadata-action@v6
         with:
           images: ${{ env.IMAGE }}
+          labels: |
+            ${{ matrix.licenses != '' && format('org.opencontainers.image.licenses={0}', matrix.licenses) || '' }}
+            ${{ matrix.title != '' && format('org.opencontainers.image.title={0}', matrix.title) || '' }}
+            ${{ matrix.description != '' && format('org.opencontainers.image.description={0}', matrix.description) || '' }}
       - id: build
         uses: docker/build-push-action@v7
         with:
-          context: webapp
+          context: ${{ matrix.component }}
           platforms: ${{ matrix.platform }}
           labels: ${{ steps.meta.outputs.labels }}
           outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
-          cache-from: type=gha,scope=webapp-${{ matrix.arch }}
-          cache-to: type=gha,mode=max,scope=webapp-${{ matrix.arch }}
+          cache-from: type=gha,scope=${{ matrix.component }}-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.component }}-${{ matrix.arch }}
       - name: Export digest
         run: |
           mkdir -p "$RUNNER_TEMP/digests"
@@ -117,7 +161,7 @@ jobs:
           DIGEST: ${{ steps.build.outputs.digest }}
       - uses: actions/upload-artifact@v7
         with:
-          name: digest-${{ matrix.arch }}
+          name: digest-${{ matrix.component }}-${{ matrix.arch }}
           path: ${{ runner.temp }}/digests/*
           if-no-files-found: error
           retention-days: 1
@@ -125,17 +169,33 @@ jobs:
   publish:
     if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/'))
     needs: image
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - component: webapp
+            suffix: ""
+            licenses: ""
+            title: ""
+            description: ""
+          - component: analyse
+            suffix: -analyse
+            licenses: GPL-3.0-or-later
+            title: dell3115cn-centre-analyse
+            description: DEDA tracking-dot analysis for the Dell 3115cn Centre web app
     runs-on: ubuntu-24.04
     permissions:
       contents: read
       packages: write
     steps:
       - name: Lower-case image name
-        run: echo "IMAGE=${IMAGE,,}" >> "$GITHUB_ENV"
+        run: echo "IMAGE=${IMAGE,,}${SUFFIX}" >> "$GITHUB_ENV"
+        env:
+          SUFFIX: ${{ matrix.suffix }}
       - uses: actions/download-artifact@v8
         with:
           path: ${{ runner.temp }}/digests
-          pattern: digest-*
+          pattern: digest-${{ matrix.component }}-*
           merge-multiple: true
       - uses: docker/setup-buildx-action@v4
       - uses: docker/login-action@v4
@@ -156,6 +216,11 @@ jobs:
             type=semver,pattern={{version}}
             type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/') }}
             type=sha,prefix=build-,format=short,enable=${{ github.ref == 'refs/heads/main' }}
+          # The analyse image is GPL-3.0-or-later, not the repository's Apache-2.0; empty for the web app (keeps the defaults).
+          annotations: |
+            ${{ matrix.licenses != '' && format('org.opencontainers.image.licenses={0}', matrix.licenses) || '' }}
+            ${{ matrix.title != '' && format('org.opencontainers.image.title={0}', matrix.title) || '' }}
+            ${{ matrix.description != '' && format('org.opencontainers.image.description={0}', matrix.description) || '' }}
       - name: Create the multi-platform image
         working-directory: ${{ runner.temp }}/digests
         run: |

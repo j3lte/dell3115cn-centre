@@ -1,6 +1,7 @@
 import { beforeAll, describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { ROUTES } from "../../src/web/helpers/routes";
 import { INITIAL_LIVE } from "../../src/web/helpers/live";
 import { noop } from "./fixtures";
 import { renderWithQuery, screen, useDom } from "./setup";
@@ -49,14 +50,14 @@ describe("NavItem", () => {
 
 describe("Sidebar", () => {
   test("Sidebar shows the brand, the routes and the printer alert only when there is one", () => {
-    const { rerender } = renderWithQuery(<Sidebar state={INITIAL_LIVE} onConnect={noop} route="history" dot={null} printerError={null} />);
+    const { rerender } = renderWithQuery(<Sidebar state={INITIAL_LIVE} onConnect={noop} route="history" routes={ROUTES} dot={null} printerError={null} />);
     expect(screen.getByText("Dell 3115CN")).toBeTruthy();
     const links = screen.getAllByRole("link");
-    expect(links.map((a: HTMLElement) => a.getAttribute("href"))).toEqual(["#/scan", "#/history", "#/printer", "#/profiles", "#/settings"]);
+    expect(links.map((a: HTMLElement) => a.getAttribute("href"))).toEqual(["#/scan", "#/history", "#/analyse", "#/printer", "#/profiles", "#/settings"]);
     expect(screen.getByRole("link", { name: "History" }).getAttribute("aria-current")).toBe("page");
     expect(screen.queryByText("Printer: Paper jam")).toBeNull();
 
-    rerender(<Sidebar state={INITIAL_LIVE} onConnect={noop} route="history" dot="error" printerError="Printer: Paper jam" />);
+    rerender(<Sidebar state={INITIAL_LIVE} onConnect={noop} route="history" routes={ROUTES} dot="error" printerError="Printer: Paper jam" />);
     expect(screen.getByText("Printer: Paper jam")).toBeTruthy();
   });
 });

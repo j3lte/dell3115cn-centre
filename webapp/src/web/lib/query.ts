@@ -13,6 +13,9 @@ export const keys = {
   outputProfiles: ["output-profiles"],
   settings: ["settings"],
   printer: ["printer"],
+  features: ["features"],
   history: ["scans", "history"],
   scan: (id: string) => ["scans", id],
+  deda: ["analyse", "deda"],
+  dedaCandidates: ["analyse", "deda-candidates"],
 } as const;

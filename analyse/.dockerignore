@@ -1,0 +1,12 @@
+.venv
+**/__pycache__
+**/*.pyc
+.pytest_cache
+*.ppm
+*.pnm
+*.pgm
+*.pbm
+*.png
+*.jpg
+*.tif
+*.tiff
