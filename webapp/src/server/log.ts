@@ -28,7 +28,9 @@ const part = (v: unknown) => (typeof v === "string" ? v : v instanceof Error ? (
 
 function emit(level: LogLevel, component: string, parts: unknown[]): void {
   if (!logs(level)) return;
-  sink(`${new Date().toISOString()} ${level.toUpperCase().padEnd(5)} ${component}: ${parts.map(part).join(" ")}`);
+  // Every line of a multi-line message (a stack) gets the prefix, so line-based tools keep it together.
+  const prefix = `${new Date().toISOString()} ${level.toUpperCase().padEnd(5)} ${component}: `;
+  for (const line of parts.map(part).join(" ").split("\n")) sink(prefix + line);
 }
 
 export type Logger = Record<LogLevel, (...parts: unknown[]) => void>;

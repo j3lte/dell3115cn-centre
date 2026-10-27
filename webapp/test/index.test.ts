@@ -14,7 +14,7 @@ afterEach(() => {
 
 async function boot(env: Record<string, string>) {
   const proc = Bun.spawn(["bun", join(import.meta.dir, "../src/server/index.ts")], {
-    env: { ...process.env, PORT: "0", ...env },
+    env: { ...process.env, PORT: "0", LOG_LEVEL: "info", ...env },
     stdout: "pipe",
     stderr: "pipe",
   });

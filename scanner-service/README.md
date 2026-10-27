@@ -35,7 +35,7 @@ Environment variables (put overrides in `/etc/default/scan3115`):
 | `SCAN3115_SIM_PAGES` | `3` | Pages in the simulated feeder (refilled after each batch) |
 | `SCAN3115_SIM_JAM` | — | Simulate one jam at `page:line` (clears after `SCAN3115_SIM_JAM_CLEAR_S`, default 5 s) |
 | `SCAN3115_CORS_ORIGIN` | — | Send `Access-Control-Allow-Origin` with this value. Off by default: the webapp calls the service server-side |
-| `LOG_LEVEL` | `info` | Log level: `debug`, `info`, `warn` or `error` (`SCAN3115_LOG` still works). Logs go to stdout. |
+| `LOG_LEVEL` | `info` | Log level: `debug`, `info`, `warn`, `error` or `critical`. `SCAN3115_LOG` still works and wins over `LOG_LEVEL`. Logs go to stdout. |
 
 There is no authentication: run it on a trusted network only.
 

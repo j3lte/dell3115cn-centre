@@ -36,12 +36,15 @@ test("debug shows with level debug", () => {
   expect(lines[0]).toEndWith("Z DEBUG http: GET /api/status 200 3ms");
 });
 
-test("an error carries its stack", () => {
+test("an error carries its stack, every line with the same prefix", () => {
   const lines = capture();
   const e = new Error("boom");
   logger("api").error("failed:", e);
-  expect(lines[0]).toContain("Z ERROR api: failed: Error: boom\n");
-  expect(lines[0]).toContain(e.stack!.split("\n")[1]!);
+  expect(lines.length).toBe(e.stack!.split("\n").length);
+  expect(lines[0]).toEndWith("Z ERROR api: failed: Error: boom");
+  const prefix = lines[0]!.slice(0, lines[0]!.indexOf("failed:"));
+  expect(lines.every((l) => l.startsWith(prefix))).toBe(true);
+  expect(lines[1]).toBe(prefix + e.stack!.split("\n")[1]);
 });
 
 test("LOG_LEVEL: unset is info, case-insensitive, warning is warn, unknown throws", () => {

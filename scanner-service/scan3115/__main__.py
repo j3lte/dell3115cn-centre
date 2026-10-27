@@ -8,7 +8,7 @@ Environment:
   SCAN3115_SIM_PAGES   pages in the simulated feeder (default 3, refilled after each batch)
   SCAN3115_SIM_JAM     simulate one jam at "page:line" (cleared after SCAN3115_SIM_JAM_CLEAR_S, default 5)
   SCAN3115_CORS_ORIGIN send Access-Control-Allow-Origin with this value (default: no CORS headers)
-  LOG_LEVEL            debug, info (default), warn or error; SCAN3115_LOG is the older name
+  LOG_LEVEL            debug, info (default), warn, error or critical; SCAN3115_LOG (older name) wins
 """
 
 import logging

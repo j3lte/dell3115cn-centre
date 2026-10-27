@@ -73,6 +73,7 @@ export class ProfileService {
   }
 
   deleteInput(id: number): void {
+    if (!this.repo.inputExists(id)) return;
     this.repo.deleteInput(id);
     log.info(`input profile ${id} deleted`);
   }
@@ -124,6 +125,7 @@ export class ProfileService {
   }
 
   deleteOutput(id: number): void {
+    if (!this.repo.outputExists(id)) return;
     this.repo.deleteOutput(id);
     log.info(`output profile ${id} deleted`);
   }

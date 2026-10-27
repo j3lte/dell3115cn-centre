@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { createApp } from "../src/server/http/app";
 import type { PrinterSource } from "../src/server/printer";
 import { PRINTER_OFF } from "../src/server/printer";
+import { adhocProfile } from "../src/server/services/scan-service";
 import { captureLog } from "./helpers";
 import { makeHarness, type Harness } from "./scan-harness";
 
@@ -47,6 +48,15 @@ describe("info", () => {
     expect(of("scan").slice(-2)).toEqual([`INFO  scan: ${v.id} cancelled`, `INFO  scan: ${v.id} deleted`]);
   });
 
+  test("a temporary scan's removal is not logged", async () => {
+    h = await makeHarness();
+    h.fake.scenario = { pages: 1 };
+    const v = await h.svc.startAdhoc(adhocProfile({ source: "flatbed", mode: "gray", dpi: 150 }), { store: false });
+    await h.svc.settled(v.id);
+    await h.svc.remove(v.id);
+    expect(of("scan").filter((l) => l.includes("deleted"))).toEqual([]);
+  });
+
   test("settings: the changed keys, never their values; a new MCP key without the key", async () => {
     h = await makeHarness();
     h.settings.update({ cleanupDays: 30, printerWakeHours: 12 }, { allowMcp: true });
@@ -66,6 +76,7 @@ describe("info", () => {
       "targets",
     );
     h.profiles.deleteOutput(o.id);
+    h.profiles.deleteOutput(999); // nothing there: no line
     expect(of("profiles")).toEqual([
       `INFO  profiles: input profile ${i.id} "Glass" created`,
       `INFO  profiles: input profile ${i.id} "Glass 2" updated`,

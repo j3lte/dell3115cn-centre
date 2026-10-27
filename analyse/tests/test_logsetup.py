@@ -4,6 +4,17 @@ import re
 
 import pytest
 
+
+@pytest.fixture(autouse=True)
+def _restore_logging():
+    """setup_logging replaces the root handlers; put pytest's back afterwards."""
+    root = logging.getLogger()
+    handlers, level = root.handlers[:], root.level
+    yield
+    root.handlers[:] = handlers
+    root.setLevel(level)
+    logging.addLevelName(logging.WARNING, "WARNING")
+
 from deda_svc.logsetup import setup_logging
 
 LINE = re.compile(r"^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z (INFO |WARN |DEBUG|ERROR) analyse\.x: (.*)$")
@@ -29,5 +40,5 @@ def test_log_level(capsys, value):
 
 
 def test_unknown_level():
-    with pytest.raises(SystemExit, match="LOG_LEVEL must be debug, info, warn or error: loud"):
+    with pytest.raises(SystemExit, match="LOG_LEVEL must be debug, info, warn, error or critical: loud"):
         setup_logging({"LOG_LEVEL": "loud"})

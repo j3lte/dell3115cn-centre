@@ -958,12 +958,12 @@ export class ScanService {
   }
 
   async remove(scanId: string): Promise<void> {
-    this.mustRow(scanId);
+    const temporary = this.mustRow(scanId).expires_at !== null; // assistant and analysis scans: not History
     const jobId = this.jobs.get(scanId);
     if (jobId) await this.cancelJob(scanId, jobId).catch(() => {});
     await this.settled(scanId);
     await this.lock(scanId, async () => this.deleteNow(scanId));
-    log.info(`${scanId} deleted`);
+    if (!temporary) log.info(`${scanId} deleted`);
   }
 
   /** Deletes finished scans older than `days`. Returns how many were removed. */
