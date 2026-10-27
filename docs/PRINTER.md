@@ -181,8 +181,13 @@ CUPS before and after every job: levels as `marker-*` attributes (macOS "Supply 
 `media-empty-warning`, `toner-low-warning`, `marker-supply-low-warning`) with their texts and error codes in
 `printer-alert-description` (CUPS clears the `INFO:` message when a job ends, but keeps that attribute), and after a
 job the page count in `marker-message` ("66098 pages printed"). A job titled `supply-refresh` only updates them; it
-sends the page-count query first, so the printer wakes up and the state it reports is current.
-`cups/systemd/dell3115cn-supplies.timer` sends that refresh job at boot and every 6 hours.
+sends the page-count query first, so the printer wakes up and the state it reports is current. CUPS stamps each
+update in `marker-change-time`, so clients can tell how old the state is.
+
+Nothing sends refresh jobs on a timer: waking the printer means a warm-up with fan, motors and a beep, and a read
+without waking adds nothing (the sleeping printer keeps reporting its last state, and CUPS keeps the levels in
+`printers.conf` across restarts). The web app sends a refresh when it is opened and `marker-change-time` is older
+than its `printerWakeHours` setting (24 hours by default), and on *Check now*.
 
 Because of the CUPS 2.4.2 workaround below, the backend sends `marker-names` only once. To change the names (as
 when the belt unit and fuser replaced the "imaging drum"), stop cupsd while no job is printing, remove the

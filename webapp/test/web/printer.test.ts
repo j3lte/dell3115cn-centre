@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import type { PrinterView } from "../../src/web/types/api";
 import { headerAlert, navDot, supplyLabel } from "../../src/web/helpers/printer";
 
-const view = (over: Partial<PrinterView>): PrinterView => ({ supplies: [], alerts: [], severity: null, pageCount: null, checkedAt: 1, ...over });
+const view = (over: Partial<PrinterView>): PrinterView => ({ supplies: [], alerts: [], severity: null, pageCount: null, readAt: null, checkedAt: 1, ...over });
 
 test("supplyLabel shortens toner names and shows unknown levels", () => {
   expect(supplyLabel({ name: "Cyan Toner", color: "cyan", type: "toner", level: 80, low: false })).toEqual({ name: "Cyan", value: "80%" });

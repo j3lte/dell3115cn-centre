@@ -49,9 +49,12 @@ export function PrinterPage({ printer: { view: printer, checking, check } }: { p
       )}
 
       <p className="hint m-0 px-1">
-        The printer reports its state after each print job and every 6 hours. While it sleeps it doesn't notice changes
-        (an opened cover, refilled paper); <strong>Check now</strong> wakes it without printing and reads it again.
-        {printer.checkedAt && <> Last read {new Date(printer.checkedAt).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}.</>}
+        The printer reports its state after each print job. While it sleeps it doesn't notice changes (an opened cover,
+        refilled paper); <strong>Check now</strong> wakes it without printing and reads it again. Opening the app does
+        that too when the last check is old (Settings → Printer).
+        {printer.readAt !== null && (
+          <> Last read from the printer: {new Date(printer.readAt).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}.</>
+        )}
       </p>
     </div>
   );

@@ -96,7 +96,15 @@ test("PrinterReader: an IPP error status is a failure", async () => {
 });
 
 test("PrinterReader without a printer is disabled", async () => {
-  expect(await new PrinterReader(null).get()).toEqual({ supplies: [], alerts: [], severity: null, pageCount: null, checkedAt: null, disabled: true });
+  expect(await new PrinterReader(null).get()).toEqual({
+    supplies: [],
+    alerts: [],
+    severity: null,
+    pageCount: null,
+    readAt: null,
+    checkedAt: null,
+    disabled: true,
+  });
 });
 
 test("printerFrom: our alerts from printer-alert-description, severity from the reasons, page count from marker-message", () => {
@@ -123,7 +131,7 @@ test("PrinterReader asks CUPS for the state reasons, message and marker message 
   const r = new PrinterReader("ipp://pi/printers/P", { fetch: fakeCups(ATTRS, calls) });
   await r.get();
   const body = new TextDecoder().decode(await calls[0]!.arrayBuffer());
-  for (const a of ["printer-state-reasons", "printer-alert-description", "marker-message"]) expect(body).toContain(a);
+  for (const a of ["printer-state-reasons", "printer-alert-description", "marker-message", "marker-change-time"]) expect(body).toContain(a);
 });
 
 /** CUPS stand-in for a refresh: Print-Job → job 7, Get-Job-Attributes → processing, then completed; printer attributes. */
@@ -159,4 +167,71 @@ test("refresh sends a supply-refresh job, waits for it and reads the fresh state
 
 test("refresh without a printer is the disabled view", async () => {
   expect((await new PrinterReader(null).refresh()).disabled).toBe(true);
+});
+
+test("printerFrom: readAt is when CUPS last got supply data from the backend (marker-change-time, seconds)", () => {
+  expect(printerFrom({ ...ATTRS, "marker-change-time": [1793096659] }).readAt).toBe(1793096659_000);
+  expect(printerFrom(ATTRS).readAt).toBeNull();
+  expect(printerFrom({ ...ATTRS, "marker-change-time": [0] }).readAt).toBeNull(); // never set
+});
+
+const HOUR = 3_600_000;
+
+test("refreshIfStale reads the queue and wakes the printer only when the last read is older than the limit", async () => {
+  const ops: number[] = [];
+  let now = 100 * HOUR;
+  const attrs: Record<string, (string | number)[]> = { ...ATTRS, "marker-change-time": [(now - 2 * HOUR) / 1000] };
+  const cups = fakeRefreshCups(ops, attrs);
+  const fetch = async (url: string, init: RequestInit) => {
+    const res = await cups(url, init);
+    if (ops.at(-1) === 0x0002) attrs["marker-change-time"] = [now / 1000]; // the refresh job reads the printer
+    return res;
+  };
+  const r = new PrinterReader("ipp://pi/printers/P", { fetch, clock: () => now, wait: async () => {} });
+  expect((await r.refreshIfStale(3 * HOUR)).readAt).toBe(now - 2 * HOUR);
+  expect(ops).toEqual([0x000b]); // fresh enough: no Print-Job
+  now += 2 * HOUR; // the read is now 4 hours old
+  ops.length = 0;
+  const v = await r.refreshIfStale(3 * HOUR);
+  expect(ops).toContain(0x0002);
+  expect(v.readAt).toBe(now);
+});
+
+test("refreshIfStale wakes the printer when CUPS has no read time", async () => {
+  const ops: number[] = [];
+  const r = new PrinterReader("ipp://pi/printers/P", { fetch: fakeRefreshCups(ops, ATTRS), wait: async () => {} });
+  await r.refreshIfStale(HOUR);
+  expect(ops).toContain(0x0002);
+});
+
+test("refreshIfStale does not try to wake the printer when CUPS is unreachable", async () => {
+  const ops: number[] = [];
+  const r = new PrinterReader("ipp://pi/printers/P", {
+    fetch: async (_u, init) => {
+      ops.push((new Uint8Array(init.body as Uint8Array)[2]! << 8) | new Uint8Array(init.body as Uint8Array)[3]!);
+      throw new Error("ECONNREFUSED");
+    },
+  });
+  expect((await r.refreshIfStale(HOUR)).error).toContain("ECONNREFUSED");
+  expect(ops).toEqual([0x000b]);
+});
+
+test("refreshIfStale tries again only after an hour when a wake left the read stale (printer switched off)", async () => {
+  const ops: number[] = [];
+  let now = 100 * HOUR;
+  const attrs = { ...ATTRS, "marker-change-time": [(now - 30 * HOUR) / 1000] }; // the refresh job changes nothing
+  const r = new PrinterReader("ipp://pi/printers/P", { fetch: fakeRefreshCups(ops, attrs), clock: () => now, wait: async () => {} });
+  const wakes = () => ops.filter((op) => op === 0x0002).length;
+  await r.refreshIfStale(24 * HOUR);
+  expect(wakes()).toBe(1);
+  now += 59 * 60_000;
+  await r.refreshIfStale(24 * HOUR);
+  expect(wakes()).toBe(1);
+  now += 2 * 60_000;
+  await r.refreshIfStale(24 * HOUR);
+  expect(wakes()).toBe(2);
+});
+
+test("refreshIfStale without a printer is the disabled view", async () => {
+  expect((await new PrinterReader(null).refreshIfStale(HOUR)).disabled).toBe(true);
 });

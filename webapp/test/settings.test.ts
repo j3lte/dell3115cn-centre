@@ -36,6 +36,7 @@ test("read() on an empty database returns the defaults", () => {
     mcpKey: null,
     mcpShelfLifeMinutes: 60,
     whiteBalance: {},
+    printerWakeHours: 24,
   });
 });
 
@@ -63,6 +64,15 @@ test("update rejects cleanupDays 0", () => {
   expect(() => service.update({ cleanupDays: 0 }, { allowMcp: false })).toThrow(ValidationError);
   expect(service.update({ cleanupDays: "14" }, { allowMcp: false }).cleanupDays).toBe(14);
   expect(service.update({ cleanupDays: null }, { allowMcp: false }).cleanupDays).toBeNull();
+});
+
+test("update validates printerWakeHours: whole hours 1-720, or null for never", () => {
+  const { service } = make();
+  for (const bad of [0, 721, 1.5, "x", true])
+    expect(() => service.update({ printerWakeHours: bad }, { allowMcp: false })).toThrow("printerWakeHours must be 1-720 hours (or null for never)");
+  expect(service.update({ printerWakeHours: "6" }, { allowMcp: false }).printerWakeHours).toBe(6);
+  expect(service.update({ printerWakeHours: 720 }, { allowMcp: false }).printerWakeHours).toBe(720);
+  expect(service.update({ printerWakeHours: null }, { allowMcp: false }).printerWakeHours).toBeNull();
 });
 
 test("update checks that button profiles exist and merges per panel format", () => {

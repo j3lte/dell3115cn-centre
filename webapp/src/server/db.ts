@@ -82,6 +82,8 @@ export type AppSettings = {
   mcpShelfLifeMinutes: number;
   /** White-point calibration per source (Settings → Colour calibration); a missing source is not corrected. */
   whiteBalance: Partial<Record<"flatbed" | "adf", WhiteCalibration>>;
+  /** Opening the app wakes the printer to read its state when the last read is older than this; null = never. */
+  printerWakeHours: number | null;
 };
 
 export const SETTING_KEYS: (keyof AppSettings)[] = [
@@ -92,6 +94,7 @@ export const SETTING_KEYS: (keyof AppSettings)[] = [
   "mcpKey",
   "mcpShelfLifeMinutes",
   "whiteBalance",
+  "printerWakeHours",
 ];
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;

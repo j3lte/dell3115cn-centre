@@ -4,6 +4,7 @@ import { ErrorMessage } from "../components/form/ErrorMessage";
 import { CleanupSetting } from "../components/settings/CleanupSetting";
 import { McpSettings } from "../components/settings/McpSettings";
 import { PanelButtonSettings } from "../components/settings/PanelButtonSettings";
+import { PrinterWakeSetting } from "../components/settings/PrinterWakeSetting";
 import { ThemeSetting } from "../components/settings/ThemeSetting";
 import { WhiteCalibrationCard } from "../components/settings/WhiteCalibrationCard";
 import { SecretBanner } from "../components/status/SecretBanner";
@@ -46,6 +47,7 @@ export function SettingsPage({ profiles }: { profiles: Profiles }) {
       <WhiteCalibrationCard settings={settings} />
       <CleanupSetting settings={settings} save={save} />
       <PanelButtonSettings settings={settings} profiles={profiles} save={save} />
+      <PrinterWakeSetting settings={settings} save={save} />
       <McpSettings settings={settings} save={save} />
     </div>
   );

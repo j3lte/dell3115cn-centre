@@ -22,7 +22,9 @@ Phone-first, responsive web app for the Dell MFP Laser 3115cn scanner. It talks 
   (the scanner leaves white slightly cyan; see [`docs/SCAN-QUALITY.md`](../docs/SCAN-QUALITY.md)).
 - **Printer tab**: alerts the printer reports (cover open, tray empty or missing, error codes like 077-300, low
   supplies), toner, belt unit and fuser levels and the page count, from the CUPS queue. Errors that block printing also
-  show in the header. **Check now** wakes the printer without printing (a CUPS refresh job) for a current state. Assistants get the same in `scanner_status`.
+  show in the header. **Check now** wakes the printer without printing (a CUPS refresh job) for a current state;
+  opening the app does the same when the last read is older than the hours set in Settings → *Printer* (24 by
+  default, or off). Assistants get the same in `scanner_status` (`wake: true` for a fresh report).
 - **Printer button**: Scan → Application → JPEG/TIFF/PDF on the panel starts a scan with the profiles set in Settings.
 - Live connection status: the app shows when the scanner service or the printer is off and reconnects by itself.
 

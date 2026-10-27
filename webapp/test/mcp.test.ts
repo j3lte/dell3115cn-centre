@@ -22,8 +22,10 @@ async function setup(opts: { clock?: () => number } = {}) {
       alerts: ["Front cover is open (077-300)"],
       severity: "error" as const,
       pageCount: 66098,
+      readAt: Date.UTC(2026, 9, 27, 10, 24, 19),
       checkedAt: 1,
     }),
+    refresh: async () => ({ supplies: [], alerts: [], severity: null, pageCount: 66099, readAt: Date.UTC(2026, 9, 27, 11, 0, 0), checkedAt: 2 }),
   };
   h = await makeHarness({ ...opts, printer });
   const key = h.settings.ensureMcpKey().mcpKey!;
@@ -101,7 +103,15 @@ test("scanner_status reports the scanner and the feeder", async () => {
     severity: "error",
     pageCount: 66098,
     supplies: [{ name: "Cyan Toner", color: "cyan", type: "toner", level: 8, low: true }],
+    readAt: "2026-10-27T10:24:19.000Z",
   });
+});
+
+test("scanner_status with wake: true wakes the printer for a fresh report", async () => {
+  const { connect } = await setup();
+  const c = await connect();
+  const r = body(await c.callTool({ name: "scanner_status", arguments: { wake: true } }));
+  expect(r.printerReport).toMatchObject({ pageCount: 66099, readAt: "2026-10-27T11:00:00.000Z" });
 });
 
 // ---------------------------------------------------------------- scanning tools
@@ -307,8 +317,11 @@ test("get_settings has no MCP key; update_settings ignores the MCP switch", asyn
   const s = await c.callTool({ name: "get_settings", arguments: {} });
   expect(JSON.stringify(s)).not.toContain(key);
   expect(body(s)).not.toHaveProperty("mcpEnabled");
-  const u = body(await c.callTool({ name: "update_settings", arguments: { settings: { cleanupDays: 14, mcpEnabled: false, mcpShelfLifeMinutes: 5 } } }));
-  expect(u.cleanupDays).toBe(14);
+  expect(body(s).printerWakeHours).toBe(24);
+  const u = body(
+    await c.callTool({ name: "update_settings", arguments: { settings: { cleanupDays: 14, printerWakeHours: 6, mcpEnabled: false, mcpShelfLifeMinutes: 5 } } }),
+  );
+  expect(u).toMatchObject({ cleanupDays: 14, printerWakeHours: 6 });
   const tools = (await c.listTools()).tools.map((t) => t.name);
   expect(tools.some((t) => /mcp|key/i.test(t))).toBe(false);
   expect(h.settings.read()).toMatchObject({ mcpEnabled: true, mcpShelfLifeMinutes: 60 });

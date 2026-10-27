@@ -20,6 +20,7 @@ import { useSaveOutputProfile } from "../../src/web/hooks/useSaveOutputProfile";
 import { flashSaved, useSaveProfile } from "../../src/web/hooks/useSaveProfile";
 import { useThemeChoice } from "../../src/web/hooks/useThemeChoice";
 import { useAutoDownload } from "../../src/web/hooks/useAutoDownload";
+import { usePrinter } from "../../src/web/hooks/usePrinter";
 import { useProfiles } from "../../src/web/hooks/useProfiles";
 import { useScanStarter } from "../../src/web/hooks/useScanStarter";
 import { startedHere } from "../../src/web/lib/storage";
@@ -413,4 +414,39 @@ test("useLive puts scan messages into the query cache and the live state", () =>
   } finally {
     globalThis.WebSocket = original;
   }
+});
+
+const printerView = (over: object = {}) => ({ supplies: [], alerts: [], severity: null, pageCount: 1, readAt: 1, checkedAt: 1, ...over });
+
+test("usePrinter asks for a refresh-if-stale when the app opens and when the tab becomes visible again, not when hidden", async () => {
+  const { calls } = stubFetch(async (req) => Response.json(printerView({ pageCount: req.method === "POST" ? 2 : 1 })));
+  const stale = () => calls.filter((r) => r.method === "POST" && new URL(r.url).pathname === "/api/printer/refresh");
+  const { result } = renderHook(() => usePrinter(), { wrapper: fixedWrapper() });
+  await waitFor(() => expect(stale()).toHaveLength(1));
+  expect(new URL(stale()[0]!.url).searchParams.get("ifStale")).toBe("true");
+  await waitFor(() => expect(result.current.checking).toBe(false));
+  const visibility = (state: DocumentVisibilityState) => {
+    Object.defineProperty(document, "visibilityState", { value: state, configurable: true });
+    act(() => void document.dispatchEvent(new Event("visibilitychange")));
+  };
+  try {
+    visibility("hidden");
+    expect(stale()).toHaveLength(1);
+    visibility("visible");
+    await waitFor(() => expect(stale()).toHaveLength(2));
+  } finally {
+    delete (document as { visibilityState?: unknown }).visibilityState;
+  }
+});
+
+test("usePrinter's check always wakes the printer (no ifStale) and its result becomes the view", async () => {
+  const { calls } = stubFetch(async (req) =>
+    Response.json(printerView({ pageCount: req.method === "POST" && !new URL(req.url).searchParams.has("ifStale") ? 3 : 1 })),
+  );
+  const { result } = renderHook(() => usePrinter(), { wrapper: fixedWrapper() });
+  await waitFor(() => expect(result.current.view).not.toBeNull());
+  await waitFor(() => expect(result.current.checking).toBe(false));
+  await act(() => result.current.check());
+  expect(calls.some((r) => r.method === "POST" && !new URL(r.url).searchParams.has("ifStale"))).toBe(true);
+  await waitFor(() => expect(result.current.view?.pageCount).toBe(3));
 });

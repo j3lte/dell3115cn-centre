@@ -44,7 +44,8 @@ export const PrinterViewSchema = exact<PrinterView>()(
       alerts: z.array(z.string()),
       severity: z.enum(["error", "warning"]).nullable(),
       pageCount: z.number().nullable(),
-      checkedAt: z.number().nullable(),
+      readAt: z.number().nullable().openapi({ description: "When the printer was last read (ms since epoch): after a print job or a refresh" }),
+      checkedAt: z.number().nullable().openapi({ description: "When this app last asked CUPS (ms since epoch)" }),
       error: z.string().optional(),
       disabled: z.literal(true).optional(),
     })
@@ -198,6 +199,7 @@ export const SettingsViewSchema = exact<SettingsView>()(
       mcpKey: z.string().nullable(),
       mcpShelfLifeMinutes: z.number(),
       whiteBalance: z.partialRecord(z.enum(["flatbed", "adf"]), WhiteCalibrationSchema),
+      printerWakeHours: z.number().nullable(),
       secretGenerated: z.boolean(),
       generatedSecret: z.string().optional(),
     })

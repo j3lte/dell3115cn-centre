@@ -20,6 +20,8 @@ let SecretBanner: typeof import("../../src/web/components/status/SecretBanner").
 let NoticeBar: typeof import("../../src/web/components/status/NoticeBar").NoticeBar;
 let WhiteCalibrationCard: typeof import("../../src/web/components/settings/WhiteCalibrationCard").WhiteCalibrationCard;
 let CleanupSetting: typeof import("../../src/web/components/settings/CleanupSetting").CleanupSetting;
+let PrinterWakeSetting: typeof import("../../src/web/components/settings/PrinterWakeSetting").PrinterWakeSetting;
+let PrinterPage: typeof import("../../src/web/pages/PrinterPage").PrinterPage;
 let PanelButtonSettings: typeof import("../../src/web/components/settings/PanelButtonSettings").PanelButtonSettings;
 let McpSettings: typeof import("../../src/web/components/settings/McpSettings").McpSettings;
 beforeAll(async () => {
@@ -32,6 +34,8 @@ beforeAll(async () => {
   ({ NoticeBar } = await import("../../src/web/components/status/NoticeBar"));
   ({ WhiteCalibrationCard } = await import("../../src/web/components/settings/WhiteCalibrationCard"));
   ({ CleanupSetting } = await import("../../src/web/components/settings/CleanupSetting"));
+  ({ PrinterWakeSetting } = await import("../../src/web/components/settings/PrinterWakeSetting"));
+  ({ PrinterPage } = await import("../../src/web/pages/PrinterPage"));
   ({ PanelButtonSettings } = await import("../../src/web/components/settings/PanelButtonSettings"));
   ({ McpSettings } = await import("../../src/web/components/settings/McpSettings"));
 });
@@ -50,6 +54,7 @@ const settingsOf = (over: Partial<Settings> = {}): Settings => ({
   mcpKey: "key-1",
   mcpShelfLifeMinutes: 60,
   whiteBalance: {},
+  printerWakeHours: 24,
   secretGenerated: false,
   ...over,
 });
@@ -218,6 +223,60 @@ describe("CleanupSetting", () => {
     await user.click(screen.getByRole("button", { name: "Save" }));
     expect(save).toHaveBeenCalledTimes(1);
     expect(save).toHaveBeenCalledWith({ cleanupDays: 7 }, "Cleanup");
+  });
+});
+
+describe("PrinterWakeSetting", () => {
+  test("PrinterWakeSetting turns waking off and on again with 24 hours", async () => {
+    const save = saver();
+    const { rerender } = renderWithQuery(<PrinterWakeSetting settings={settingsOf()} save={save} />);
+    const toggle = () => screen.getByRole("switch", { name: /Wake the printer when the app is opened/ });
+    expect(toggle().getAttribute("aria-checked")).toBe("true");
+    await user.click(toggle());
+    expect(save).toHaveBeenLastCalledWith({ printerWakeHours: null }, "Printer wake-up");
+    rerender(<PrinterWakeSetting settings={settingsOf({ printerWakeHours: null })} save={save} />);
+    expect(screen.queryByRole("spinbutton")).toBeNull();
+    await user.click(toggle());
+    expect(save).toHaveBeenLastCalledWith({ printerWakeHours: 24 }, "Printer wake-up");
+  });
+
+  test("PrinterWakeSetting saves a changed number of hours; the field refuses more than 720", async () => {
+    const save = saver();
+    renderWithQuery(<PrinterWakeSetting settings={settingsOf({ printerWakeHours: 24 })} save={save} />);
+    const hours = screen.getByRole("spinbutton", { name: "When the last check is older than (hours)" }) as HTMLInputElement;
+    expect(hours.value).toBe("24");
+    expect(screen.getByRole("button", { name: "Save" }).hasAttribute("disabled")).toBe(true);
+    await user.clear(hours);
+    await user.type(hours, "6");
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    expect(save).toHaveBeenLastCalledWith({ printerWakeHours: 6 }, "Printer wake-up");
+    await user.clear(hours);
+    await user.type(hours, "5000");
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    expect(save).toHaveBeenCalledTimes(1);
+    expect(hours.validity.rangeOverflow).toBe(true);
+  });
+});
+
+describe("PrinterPage", () => {
+  const view = { supplies: [], alerts: [], severity: null, pageCount: 66098, readAt: null, checkedAt: 1 };
+
+  test("PrinterPage says when the printer was last read, or that it hasn't been", () => {
+    const readAt = new Date(2026, 9, 27, 11, 24).getTime();
+    const { rerender } = renderWithQuery(<PrinterPage printer={{ view: { ...view, readAt }, checking: false, check: async () => {} }} />);
+    expect(screen.getByText(/Last read from the printer/).textContent).toContain(new Date(readAt).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }));
+    expect(screen.queryByText(/every 6 hours/)).toBeNull();
+    rerender(<PrinterPage printer={{ view, checking: false, check: async () => {} }} />);
+    expect(screen.queryByText(/Last read from the printer/)).toBeNull();
+  });
+
+  test("PrinterPage's Check now wakes the printer and shows that it is checking", async () => {
+    const check = mock(async () => {});
+    const { rerender } = renderWithQuery(<PrinterPage printer={{ view, checking: false, check }} />);
+    await user.click(screen.getByRole("button", { name: "Check now" }));
+    expect(check).toHaveBeenCalledTimes(1);
+    rerender(<PrinterPage printer={{ view, checking: true, check }} />);
+    expect(screen.getByRole("button", { name: "Checking…" }).hasAttribute("disabled")).toBe(true);
   });
 });
 

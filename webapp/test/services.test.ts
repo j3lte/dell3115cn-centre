@@ -29,7 +29,7 @@ function make(over: { printer?: Parameters<typeof createServices>[0]["printer"] 
   });
 }
 
-const view = (pageCount: number): PrinterView => ({ supplies: [], alerts: [], severity: null, pageCount, checkedAt: 1 });
+const view = (pageCount: number): PrinterView => ({ supplies: [], alerts: [], severity: null, pageCount, readAt: null, checkedAt: 1 });
 
 test("createServices wires one database through every service", () => {
   const s = make();
@@ -41,7 +41,7 @@ test("createServices wires one database through every service", () => {
 
 test("PrinterService without a source answers the disabled view", async () => {
   const p = new PrinterService();
-  const off = { supplies: [], alerts: [], severity: null, pageCount: null, checkedAt: null, disabled: true as const };
+  const off = { supplies: [], alerts: [], severity: null, pageCount: null, readAt: null, checkedAt: null, disabled: true as const };
   expect(await p.get()).toEqual(off);
   expect(await p.refresh()).toEqual(off);
 });
@@ -52,6 +52,28 @@ test("PrinterService.refresh falls back to get when the source cannot refresh", 
   const q = new PrinterService({ get: async () => view(7), refresh: async () => view(8) });
   expect(await q.get()).toEqual(view(7));
   expect(await q.refresh()).toEqual(view(8));
+});
+
+test("PrinterService.refreshIfStale passes the wake setting in milliseconds; null hours or no support only reads", async () => {
+  const asked: number[] = [];
+  let hours: number | null = 24;
+  const source = { get: async () => view(7), refreshIfStale: async (ms: number) => (asked.push(ms), view(8)) };
+  const p = new PrinterService(source, () => hours);
+  expect(await p.refreshIfStale()).toEqual(view(8));
+  expect(asked).toEqual([24 * 3_600_000]);
+  hours = null;
+  expect(await p.refreshIfStale()).toEqual(view(7));
+  expect(asked).toHaveLength(1);
+  expect(await new PrinterService({ get: async () => view(7) }, () => 1).refreshIfStale()).toEqual(view(7));
+  expect((await new PrinterService().refreshIfStale()).disabled).toBe(true);
+});
+
+test("createServices: the printer service follows the printerWakeHours setting", async () => {
+  const asked: number[] = [];
+  const s = make({ printer: { get: async () => view(7), refreshIfStale: async (ms: number) => (asked.push(ms), view(8)) } });
+  s.settings.update({ printerWakeHours: 6 }, { allowMcp: false });
+  await s.printer.refreshIfStale();
+  expect(asked).toEqual([6 * 3_600_000]);
 });
 
 test("CalibrationService.clear removes only that source", () => {

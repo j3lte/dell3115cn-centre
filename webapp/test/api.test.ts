@@ -25,9 +25,11 @@ async function setup() {
         alerts: ["Tray 1 is out of paper"],
         severity: "warning" as const,
         pageCount: 66098,
+        readAt: 4,
         checkedAt: 5,
       }),
-      refresh: async () => ({ supplies: [], alerts: [], severity: null, pageCount: 66099, checkedAt: 6 }),
+      refresh: async () => ({ supplies: [], alerts: [], severity: null, pageCount: 66099, readAt: 6, checkedAt: 6 }),
+      refreshIfStale: async (ms: number) => ({ supplies: [], alerts: [], severity: null, pageCount: 66100, readAt: ms, checkedAt: 7 }),
     },
   });
   h.settings.ensureMcpKey();
@@ -451,6 +453,15 @@ test("POST /api/printer/refresh asks the printer for a fresh state", async () =>
   const r = await call("POST", "/api/printer/refresh");
   expect(r.status).toBe(200);
   expect(r.body).toMatchObject({ pageCount: 66099, checkedAt: 6 });
+});
+
+test("POST /api/printer/refresh?ifStale=true wakes the printer only when the last read is older than the setting", async () => {
+  const { call } = await setup();
+  const r = await call("POST", "/api/printer/refresh?ifStale=true");
+  expect(r.status).toBe(200);
+  expect(r.body).toMatchObject({ pageCount: 66100, readAt: 24 * 3_600_000 }); // the fake echoes the limit it was given
+  expect((await call("POST", "/api/printer/refresh?ifStale=false")).body.pageCount).toBe(66099);
+  expect((await call("POST", "/api/printer/refresh?ifStale=maybe")).status).toBe(400);
 });
 
 test("GET /api/openapi.json describes the API", async () => {

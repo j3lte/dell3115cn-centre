@@ -65,13 +65,23 @@ export function registerScanTools(server: McpServer, deps: McpDeps, ctx: McpCont
     "scanner_status",
     {
       description:
-        "State of the scanner: whether the scanner service is connected, the printer's state and whether paper is in the document feeder; and `printerReport`: alerts the printer reported after its last job (covers, trays, error codes like 077-300, low supplies; severity error = printing blocked), the toner, belt unit and fuser levels (percent; null = unknown) and the lifetime page count.",
+        "State of the scanner: whether the scanner service is connected, the printer's state and whether paper is in the document feeder; and `printerReport`: alerts the printer reported when it was last read (covers, trays, error codes like 077-300, low supplies; severity error = printing blocked), the toner, belt unit and fuser levels (percent; null = unknown), the lifetime page count and `readAt`, when the printer was last read (after its last print job or wake-up). A sleeping printer doesn't notice changes; `wake: true` wakes it first (warm-up noise, nothing is printed, takes up to a minute) for a fresh report.",
+      inputSchema: {
+        wake: z.boolean().optional().describe("Wake the printer and read it again first (default false: report what was last read)"),
+      },
       annotations: { readOnlyHint: true },
     },
-    () =>
+    (a) =>
       run(async () => {
-        const p = await deps.services.printer.get();
-        const printerReport = { alerts: p.alerts, severity: p.severity, pageCount: p.pageCount, supplies: p.supplies, ...(p.error ? { error: p.error } : {}) };
+        const p = await (a.wake ? deps.services.printer.refresh() : deps.services.printer.get());
+        const printerReport = {
+          alerts: p.alerts,
+          severity: p.severity,
+          pageCount: p.pageCount,
+          supplies: p.supplies,
+          readAt: p.readAt === null ? null : new Date(p.readAt).toISOString(),
+          ...(p.error ? { error: p.error } : {}),
+        };
         return jsonResult({ ...scanner.status, printerReport });
       }),
   );
