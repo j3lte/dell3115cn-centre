@@ -1,0 +1,109 @@
+import { afterEach, describe, expect, test } from "bun:test";
+import { createApp } from "../src/server/http/app";
+import type { PrinterSource } from "../src/server/printer";
+import { PRINTER_OFF } from "../src/server/printer";
+import { captureLog } from "./helpers";
+import { makeHarness, type Harness } from "./scan-harness";
+
+let h: Harness;
+afterEach(() => h?.close());
+
+describe("info", () => {
+  const lines = captureLog();
+  const of = (component: string) => lines.filter((l) => l.slice(6).startsWith(`${component}:`));
+
+  test("a scan: started with its settings, pages scanned, delivered with file count", async () => {
+    h = await makeHarness();
+    h.fake.scenario = { pages: 3 };
+    const v = await h.svc.start(h.input().id, h.folderOutput().id, { review: false });
+    await h.svc.settled(v.id);
+    expect(of("scan")).toEqual([
+      `INFO  scan: ${v.id} started (ui): Feeder gray, adf gray 150 dpi`,
+      `INFO  scan: ${v.id} scanned 3 page(s), delivering`,
+      expect.stringMatching(new RegExp(`^INFO  scan: ${v.id} delivered to "To folder" \\(folder\\): 1 file\\(s\\) in \\d+\\.\\ds$`)),
+    ]);
+  });
+
+  test("a scan without pages and a failed delivery are warnings", async () => {
+    h = await makeHarness();
+    h.fake.scenario = { pages: 0 };
+    const empty = await h.svc.start(h.input().id, h.folderOutput().id, { review: false });
+    await h.svc.settled(empty.id);
+    expect(of("scan").at(-1)).toBe(`WARN  scan: ${empty.id} failed: No paper in the feeder`);
+
+    h.fake.scenario = { pages: 1 };
+    const bad = h.folderOutput({ name: "Nowhere", destination: { type: "folder", config: { path: "/nonexistent/x" } } });
+    const v = await h.svc.start(h.input().id, bad.id, { review: false });
+    await h.svc.settled(v.id);
+    expect(of("scan").at(-1)).toStartWith(`WARN  scan: ${v.id} delivery to "Nowhere" (folder) failed: `);
+  });
+
+  test("cancel and delete", async () => {
+    h = await makeHarness();
+    const v = await h.svc.start(h.input().id, h.folderOutput().id, { review: true });
+    await h.svc.settled(v.id);
+    await h.svc.cancel(v.id);
+    await h.svc.remove(v.id);
+    expect(of("scan").slice(-2)).toEqual([`INFO  scan: ${v.id} cancelled`, `INFO  scan: ${v.id} deleted`]);
+  });
+
+  test("settings: the changed keys, never their values; a new MCP key without the key", async () => {
+    h = await makeHarness();
+    h.settings.update({ cleanupDays: 30, printerWakeHours: 12 }, { allowMcp: true });
+    h.settings.update({ cleanupDays: 30 }, { allowMcp: true }); // unchanged: no line
+    const key = h.settings.regenerateMcpKey().mcpKey;
+    expect(of("settings")).toEqual(["INFO  settings: changed cleanupDays, printerWakeHours", "INFO  settings: MCP key regenerated"]);
+    expect(lines.join("\n")).not.toContain(key);
+  });
+
+  test("profiles: created, updated and deleted, by kind, id and name", async () => {
+    h = await makeHarness();
+    const i = h.profiles.createInput({ name: "Glass", source: "flatbed", mode: "color", dpi: 300, paper: "glass", autoOrient: false, threshold: 128 });
+    h.profiles.updateInput(i.id, { name: "Glass 2", source: "flatbed", mode: "color", dpi: 300, paper: "glass", autoOrient: false, threshold: 128 });
+    h.profiles.deleteInput(i.id);
+    const o = h.profiles.saveOutput(
+      { name: "Out", format: "png", jpegQuality: 80, filenameTemplate: "x", destination: { type: "folder", config: { path: h.outDir } } },
+      "targets",
+    );
+    h.profiles.deleteOutput(o.id);
+    expect(of("profiles")).toEqual([
+      `INFO  profiles: input profile ${i.id} "Glass" created`,
+      `INFO  profiles: input profile ${i.id} "Glass 2" updated`,
+      `INFO  profiles: input profile ${i.id} deleted`,
+      `INFO  profiles: output profile ${o.id} "Out" created`,
+      `INFO  profiles: output profile ${o.id} deleted`,
+    ]);
+  });
+
+  test("scanner service: connected and unreachable, once per change", async () => {
+    h = await makeHarness();
+    expect(of("scanner")[0]).toMatch(/^INFO  scanner: service connected, printer \w+$/);
+    h.fake.stop();
+    const deadline = Date.now() + 2000;
+    while (h.client.status.service !== "unreachable" && Date.now() < deadline) await Bun.sleep(5);
+    await Bun.sleep(200); // a few reconnect attempts
+    expect(of("scanner").filter((l) => l.includes("unreachable"))).toHaveLength(1);
+    expect(of("scanner").at(-1)).toStartWith("WARN  scanner: service unreachable: ");
+  });
+
+  test("printer: a refresh says it wakes the printer", async () => {
+    const source: PrinterSource = { get: async () => ({ ...PRINTER_OFF }), refresh: async () => ({ ...PRINTER_OFF }) };
+    h = await makeHarness({ printer: source });
+    await h.services.printer.refresh();
+    expect(of("printer")).toEqual(["INFO  printer: reading supply levels (wakes the printer)"]);
+  });
+});
+
+describe("debug", () => {
+  const lines = captureLog("debug");
+
+  test("API requests: method, path, status, time", async () => {
+    h = await makeHarness();
+    const app = createApp(h.services);
+    await app.request("/api/settings");
+    await app.request("/api/nope");
+    const http = lines.filter((l) => l.startsWith("DEBUG http:"));
+    expect(http[0]).toMatch(/^DEBUG http: GET \/api\/settings 200 \d+ms$/);
+    expect(http[1]).toMatch(/^DEBUG http: GET \/api\/nope 404 \d+ms$/);
+  });
+});

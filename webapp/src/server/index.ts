@@ -7,6 +7,7 @@ import { createApp } from "./http/app";
 import { sameOrigin } from "./http/guard";
 import { deviceIccPath } from "./pipeline/icc";
 import { LiveHub, type LiveSocket } from "./live";
+import { configureLog, logger } from "./log";
 import { mcpHandler } from "./mcp/http";
 import { AnalyseClient } from "./analyse-client";
 import { ScannerClient } from "./scanner-client";
@@ -16,8 +17,10 @@ import { PrinterReader } from "./printer";
 import indexHtml from "../web/index.html";
 
 const config = loadConfig(process.env);
+configureLog({ level: config.logLevel });
+const log = logger("app");
 if (!deviceIccPath())
-  console.warn(
+  log.warn(
     "Scanner colour profile not found (set DEVICE_ICC or put dell3115cn.icm in assets/, see assets/README.md): colour scans will have a magenta cast.",
   );
 mkdirSync(config.dataDir, { recursive: true });
@@ -25,7 +28,7 @@ const db = openDb(join(config.dataDir, "scan-webapp.sqlite"));
 
 const secret = resolveAppSecret(config, config.dataDir);
 if (secret.generated) {
-  console.log(
+  log.warn(
     [
       "APP_SECRET is not set. Destination credentials are encrypted with a generated secret,",
       `saved in ${join(config.dataDir, "app-secret")}. Set it in your compose file to keep credentials readable:`,
@@ -52,7 +55,7 @@ const services = createServices({
 const { settings, scans } = services;
 // Analyses cut short by a restart fail, and their temporary scans go.
 const interrupted = services.deda?.recover() ?? 0;
-if (interrupted) console.log(`analyse: ${interrupted} tracking-dot analysis(es) interrupted by the restart`);
+if (interrupted) logger("deda").info(`${interrupted} tracking-dot analysis(es) interrupted by the restart`);
 
 hub.setSnapshot(() => [{ type: "status", status: client.status }, ...scans.liveScans().map((scan) => ({ type: "scan" as const, scan }))]);
 client.onStatus((status) => hub.broadcast({ type: "status", status }));
@@ -92,18 +95,16 @@ const server = Bun.serve({
   },
 });
 
-// One write, so both lines arrive together.
-console.log(
-  `scan-webapp listening on ${server.url} (scanner service ${config.serviceUrl})\n` +
-    `MCP endpoint: ${new URL("/mcp/", server.url)} (${mcpOn ? "enabled" : "disabled"})`,
-);
+// "listening" last: whoever waits for it has the lines before it.
+log.info(`MCP endpoint: ${new URL("/mcp/", server.url)} (${mcpOn ? "enabled" : "disabled"})`);
+log.info(`listening on ${server.url} (scanner service ${config.serviceUrl}, log level ${config.logLevel})`);
 
 // Optional history cleanup ("delete after N days"), once at startup and then daily.
 const runCleanup = () => {
   const days = settings.read().cleanupDays;
   if (days) {
     const n = scans.cleanup(days);
-    if (n) console.log(`cleanup: removed ${n} scan(s) older than ${days} days`);
+    if (n) logger("cleanup").info(`removed ${n} scan(s) older than ${days} days`);
   }
 };
 runCleanup();

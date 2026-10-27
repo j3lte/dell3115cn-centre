@@ -1,3 +1,5 @@
+import { parseLogLevel, type LogLevel } from "./log";
+
 export type Config = {
   serviceUrl: string;
   dataDir: string;
@@ -7,6 +9,8 @@ export type Config = {
   printerUri: string | null;
   /** Analyse service base URL (ANALYSE_ENDPOINT); null = Analyse section off. */
   analyseUrl: string | null;
+  /** LOG_LEVEL: debug, info (default), warn or error. */
+  logLevel: LogLevel;
 };
 
 /** The queue name cups/README.md installs, on the scanner service's host. */
@@ -28,5 +32,6 @@ export function loadConfig(env: Record<string, string | undefined>): Config {
     appSecret: env.APP_SECRET || undefined,
     printerUri: printer === "off" ? null : printer || `ipp://${new URL(serviceUrl).hostname}:631/printers/${QUEUE}`,
     analyseUrl: analyse ? analyse.replace(/\/+$/, "") : null,
+    logLevel: parseLogLevel(env.LOG_LEVEL),
   };
 }

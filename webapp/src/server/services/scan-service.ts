@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { DeliveryError, ValidationError } from "../destinations/types";
 import type { LiveHub } from "../live";
+import { logger } from "../log";
 import type { DownloadFile } from "../downloads";
 import { encodeOutputs, type OutFile } from "../output/encode";
 import { renderName } from "../output/filename";
@@ -20,6 +21,8 @@ import type { ProfileService } from "./profile-service";
 import type { SettingsService } from "./settings-service";
 import type { CalibrationService } from "./calibration-service";
 import { NotFound, StateError } from "./errors";
+
+const log = logger("scan");
 
 export type AreaMm = [number, number, number, number];
 
@@ -382,7 +385,7 @@ export class ScanService {
     const wrapped: Promise<void> = work
       .catch((e) => {
         // A bug must never leave a scan looking active forever.
-        console.error(`scan ${id}:`, e);
+        log.error(`${id}:`, e);
         const r = this.row(id);
         if (r && (r.status === "scanning" || r.status === "delivering")) {
           this.update(id, { status: "failed", error: `Internal error: ${message(e)}` });
@@ -465,6 +468,7 @@ export class ScanService {
       expires_at: o.expiresAt,
     });
     this.jobs.set(id, jobId);
+    log.info(`${id} started (${o.origin}): ${input.name}, ${input.source} ${input.mode} ${input.dpi} dpi${o.review ? ", review" : ""}`);
     this.track(id, this.runBatch(id, jobId));
     this.broadcast(id);
     return this.current(id);
@@ -613,6 +617,9 @@ export class ScanService {
     } else if (r.review || cancelled) status = r.origin === "mcp" || r.origin === "analyse" ? "ready" : "review";
     else status = "delivering";
     this.update(id, { status, problem, error, page_count: total });
+    if (status === "failed") log.warn(`${id} failed: ${error}`);
+    else if (status === "cancelled") log.info(`${id} cancelled`);
+    else (issues.length ? log.warn : log.info)(`${id} scanned ${b.received} page(s), ${status}${issues.length ? `: ${issues.join("; ")}` : ""}`);
     this.broadcast(id);
     if (status === "delivering" && r.output_profile_id !== null) await this.deliver(id, r.output_profile_id);
   }
@@ -627,6 +634,8 @@ export class ScanService {
       this.update(id, { error: null });
       const profileRow = this.profiles.findOutput(outputId);
       const name = profileRow?.name ?? `Output profile ${outputId}`;
+      const to = `"${name}" (${profileRow?.destination.type ?? "missing"})`;
+      const t0 = performance.now();
       const did = this.repo.insertDelivery(id, outputId, name, this.clock());
       this.broadcast(id);
       let files: OutFile[] = [];
@@ -650,9 +659,11 @@ export class ScanService {
         await dest.send(files, cfg, { scanId: id, title: renderName(profile.filenameTemplate, ctx) });
         this.repo.markDeliverySent(did);
         this.update(id, { status: "done", error: null });
+        log.info(`${id} delivered to ${to}: ${files.length} file(s) in ${((performance.now() - t0) / 1000).toFixed(1)}s`);
       } catch (e) {
         const msg = e instanceof SecretError ? `${name}: stored credentials can't be decrypted — re-enter credentials` : message(e);
-        if (!(e instanceof DeliveryError || e instanceof SecretError || e instanceof ValidationError)) console.error(`delivery ${did} of scan ${id}:`, e);
+        if (!(e instanceof DeliveryError || e instanceof SecretError || e instanceof ValidationError)) log.error(`delivery ${did} of scan ${id}:`, e);
+        log.warn(`${id} delivery to ${to} failed: ${msg}`);
         this.repo.markDeliveryFailed(did, msg, store());
         // A scan that was delivered once stays done; the failed resend shows as its own delivery row.
         const sentBefore = this.repo.hasSentDelivery(id);
@@ -920,6 +931,7 @@ export class ScanService {
     }
     if (r.status !== "review" && r.status !== "ready") throw new StateError(`A ${r.status} scan can't be cancelled`);
     this.update(scanId, { status: "cancelled" });
+    log.info(`${scanId} cancelled`);
     this.broadcast(scanId);
     return this.current(scanId);
   }
@@ -950,6 +962,7 @@ export class ScanService {
     if (jobId) await this.cancelJob(scanId, jobId).catch(() => {});
     await this.settled(scanId);
     await this.lock(scanId, async () => this.deleteNow(scanId));
+    log.info(`${scanId} deleted`);
   }
 
   /** Deletes finished scans older than `days`. Returns how many were removed. */

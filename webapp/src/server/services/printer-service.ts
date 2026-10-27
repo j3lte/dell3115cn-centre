@@ -1,6 +1,8 @@
+import { logger } from "../log";
 import { PRINTER_OFF, type PrinterSource, type PrinterView } from "../printer";
 
 const HOUR_MS = 3_600_000;
+const log = logger("printer");
 
 /** The printer's state (supplies, alerts, page count); without a source (no printer configured) it answers `disabled`. */
 export class PrinterService {
@@ -20,6 +22,7 @@ export class PrinterService {
   /** A fresh state when the source can refresh (this wakes the printer), else the same as `get`. */
   refresh(): Promise<PrinterView> {
     this.lastWake = this.clock();
+    if (this.source?.refresh) log.info("reading supply levels (wakes the printer)");
     return this.source?.refresh ? this.source.refresh() : this.get();
   }
 

@@ -1,9 +1,12 @@
 import { BUTTON_FORMATS, isUuid, type AppSettings, type ButtonFormat } from "../db";
 import { ValidationError } from "../destinations/types";
+import { logger } from "../log";
 import type { WhiteCalibration } from "../pipeline/white";
 import type { Source } from "../profiles";
 import type { SettingsRepo } from "../repos/settings-repo";
 import { NotFound } from "./errors";
+
+const log = logger("settings");
 
 const SHELF_LIFE_MINUTES = { min: 5, max: 1440 } as const;
 const WAKE_HOURS = { min: 1, max: 720 } as const;
@@ -83,6 +86,9 @@ export class SettingsService {
       patch.mcpShelfLifeMinutes = m;
     }
     const after = this.repo.write(patch);
+    // Names only: values may be private.
+    const changed = (Object.keys(patch) as (keyof AppSettings)[]).filter((k) => JSON.stringify(before[k]) !== JSON.stringify(after[k]));
+    if (changed.length) log.info(`changed ${changed.join(", ")}`);
     if (after.mcpEnabled !== before.mcpEnabled) this.onMcpChange?.();
     return after;
   }
@@ -96,6 +102,7 @@ export class SettingsService {
 
   regenerateMcpKey(): AppSettings {
     const s = this.repo.write({ mcpKey: crypto.randomUUID() });
+    log.info("MCP key regenerated");
     this.onMcpChange?.();
     return s;
   }
@@ -106,5 +113,6 @@ export class SettingsService {
     if (cal) wb[source] = cal;
     else delete wb[source];
     this.repo.write({ whiteBalance: wb });
+    log.info(`white calibration ${cal ? "saved" : "cleared"} for ${source}`);
   }
 }

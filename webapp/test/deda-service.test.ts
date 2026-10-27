@@ -4,12 +4,13 @@ import { join } from "node:path";
 import sharp from "sharp";
 import { AnalyseClient, type DedaReport } from "../src/server/analyse-client";
 import { ValidationError } from "../src/server/destinations/types";
+import { configureLog } from "../src/server/log";
 import type { InputProfileDraft } from "../src/server/profiles";
 import { DedaRepo } from "../src/server/repos/deda-repo";
 import { ScanRepo } from "../src/server/repos/scan-repo";
 import { NotFound } from "../src/server/services/errors";
 import type { DedaService } from "../src/server/services/deda-service";
-import { scanInsert, withoutDeviceIcc } from "./helpers";
+import { captureLog, scanInsert, withoutDeviceIcc } from "./helpers";
 import { makeHarness, type Harness } from "./scan-harness";
 
 let h: Harness;
@@ -280,17 +281,16 @@ describe("DEDA service", () => {
       if (id === first.id) throw new Error("db gone");
       return realGet.call(this, id);
     });
-    const errors = spyOn(console, "error").mockImplementation(() => {});
-    let logged = 0;
+    const errors: string[] = [];
+    configureLog({ sink: (l) => void (l.includes(" ERROR ") && errors.push(l)) });
     try {
       await deda.idle();
-      logged = errors.mock.calls.length;
     } finally {
       spy.mockRestore();
-      errors.mockRestore();
+      configureLog({ sink: (l) => process.stdout.write(`${l}\n`) });
     }
     expect(deda.get(second.id)!.status).toBe("done");
-    expect(logged).toBeGreaterThan(0);
+    expect(errors.length).toBeGreaterThan(0);
   });
 
   test("rename trims and validates", async () => {
@@ -373,5 +373,28 @@ describe("DEDA candidates", () => {
     }
     expect(deda.candidates(2).map((s) => s.id)).toEqual(["s3", "s2"]);
     expect(deda.candidates()).toHaveLength(4);
+  });
+});
+
+describe("DEDA service log", () => {
+  withoutDeviceIcc();
+  const lines = captureLog();
+  const deda = () => lines.filter((l) => l.slice(6).startsWith("deda:"));
+
+  test("started and done with the dot count, never the decode", async () => {
+    const svc = await setup();
+    const scanId = await storedScan();
+    const e = svc.fromHistory(scanId, 1);
+    await svc.idle();
+    expect(deda()).toEqual([`INFO  deda: ${e.id} started from history (scan ${scanId} page 1)`, `INFO  deda: ${e.id} done: dots found (321), decoded`]);
+    expect(lines.join("\n")).not.toContain("123456");
+  });
+
+  test("a failure is a warning", async () => {
+    const svc = await setup(analyser({ unreachable: true }));
+    const e = svc.fromScan();
+    await svc.idle();
+    expect(deda()[0]).toBe(`INFO  deda: ${e.id} started from a glass scan`);
+    expect(deda().at(-1)).toStartWith(`WARN  deda: ${e.id} failed: `);
   });
 });

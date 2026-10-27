@@ -1,5 +1,6 @@
 import type { Destination, Destinations } from "../destinations";
 import { DESTINATION_TYPES, SECRET_FIELDS, SECRET_MASK, ValidationError, type DestinationType } from "../destinations/types";
+import { logger } from "../log";
 import { validateFilter } from "../pipeline/filters";
 import {
   validateInput,
@@ -13,6 +14,8 @@ import type { ProfileRepo } from "../repos/profile-repo";
 import { NotFound } from "./errors";
 
 /** The config fields that choose where a destination sends to (and so where a stored secret would go). */
+const log = logger("profiles");
+
 const TARGET_FIELDS = ["url", "host", "server", "port", "username"];
 
 /**
@@ -57,16 +60,21 @@ export class ProfileService {
 
   /** Ignores a given `id`. */
   createInput(draft: InputProfileDraft): InputProfile {
-    return this.repo.saveInput(this.checkInput({ ...draft, id: undefined }));
+    const p = this.repo.saveInput(this.checkInput({ ...draft, id: undefined }));
+    log.info(`input profile ${p.id} "${p.name}" created`);
+    return p;
   }
 
   updateInput(id: number, draft: InputProfileDraft): InputProfile {
     this.getInput(id);
-    return this.repo.saveInput(this.checkInput({ ...draft, id }));
+    const p = this.repo.saveInput(this.checkInput({ ...draft, id }));
+    log.info(`input profile ${id} "${p.name}" updated`);
+    return p;
   }
 
   deleteInput(id: number): void {
     this.repo.deleteInput(id);
+    log.info(`input profile ${id} deleted`);
   }
 
   inputExists(id: number): boolean {
@@ -110,11 +118,14 @@ export class ProfileService {
     if (d.destination) this.guardMaskedSecrets(d.destination.type, (d.destination.config ?? {}) as Record<string, unknown>, d.id, scope);
     this.checkOutput(d, d.id);
     validateOutput(d);
-    return this.repo.toPublic(this.repo.saveOutput(d));
+    const p = this.repo.saveOutput(d);
+    log.info(`output profile ${p.id} "${p.name}" ${d.id === undefined ? "created" : "updated"}`);
+    return this.repo.toPublic(p);
   }
 
   deleteOutput(id: number): void {
     this.repo.deleteOutput(id);
+    log.info(`output profile ${id} deleted`);
   }
 
   outputExists(id: number): boolean {

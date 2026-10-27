@@ -2,11 +2,12 @@
 import logging
 import os
 
+from .logsetup import setup_logging
 from .server import serve
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+setup_logging(os.environ)
 srv = serve(int(os.environ.get("PORT", "8770")))
-logging.getLogger(__name__).info("listening on port %d", srv.server_address[1])
+logging.getLogger("deda_svc").info("listening on port %d", srv.server_address[1])
 try:
     srv.serve_forever()
 except KeyboardInterrupt:
