@@ -41,8 +41,8 @@ printf '\n' | lp -d Dell_MFP_Laser_3115cn -t supply-refresh -o raw -
 ```
 
 The levels and alerts are read after every print job. A refresh job wakes the printer (warm-up noise), so nothing
-sends one on a timer: the web app sends one when it is opened and the last read is older than its *Printer* setting
-(24 hours by default), or when you press *Check now*. Upgrading from a version with `dell3115cn-supplies.timer`:
+sends one on a timer: the web app sends one when it is opened and the last read is older than its *Printer wake-up*
+setting (24 hours by default), or when you press *Check now*. Upgrading from a version with `dell3115cn-supplies.timer`:
 
 ```sh
 sudo systemctl disable --now dell3115cn-supplies.timer

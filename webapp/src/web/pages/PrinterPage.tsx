@@ -51,7 +51,7 @@ export function PrinterPage({ printer: { view: printer, checking, check } }: { p
       <p className="hint m-0 px-1">
         The printer reports its state after each print job. While it sleeps it doesn't notice changes (an opened cover,
         refilled paper); <strong>Check now</strong> wakes it without printing and reads it again. Opening the app does
-        that too when the last check is old (Settings → Printer).
+        that too when the last check is old (Settings → Printer wake-up).
         {printer.readAt !== null && (
           <> Last read from the printer: {formatWhenShort(printer.readAt)}.</>
         )}

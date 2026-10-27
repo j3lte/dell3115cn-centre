@@ -9,7 +9,7 @@ export function PrinterWakeSetting({ settings, save }: { settings: Settings; sav
       settings={settings}
       save={save}
       setting="printerWakeHours"
-      title="Printer"
+      title="Printer wake-up"
       label="Wake the printer when the app is opened"
       hint="A sleeping printer doesn't notice an opened cover or refilled paper. Waking it makes some noise; nothing is printed."
       fieldLabel="When the last check is older than (hours)"
