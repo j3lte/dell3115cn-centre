@@ -5,7 +5,5 @@ import { fileURLToPath } from "node:url";
 declare const BUNDLED: boolean | undefined;
 export const bundled = typeof BUNDLED !== "undefined" && BUNDLED;
 
-/** The folder holding `assets/` and `vendor/`: the webapp folder, which is also the parent of the bundle's `dist/`. */
-export function appDir(): string {
-  return bundled ? dirname(import.meta.dir) : fileURLToPath(new URL("../..", import.meta.url));
-}
+/** The folder holding `assets/`: the webapp folder, which is also the parent of the bundle's `dist/`. */
+export const appDir = bundled ? dirname(import.meta.dir) : fileURLToPath(new URL("../..", import.meta.url));

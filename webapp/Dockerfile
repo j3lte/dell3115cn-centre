@@ -38,14 +38,19 @@ ENV NODE_ENV=production \
 # ... except sharp (see the deps stage).
 COPY --from=deps /sharp ./node_modules
 COPY --from=build /app/dist ./dist
-COPY --from=build /app/vendor ./vendor
 COPY assets ./assets
-RUN mkdir -p /data && chown bun:bun /data
+# Smoke test against exactly this node_modules (the tests ran against the full one): the bundle must start and serve.
+RUN set -e; \
+    (SERVICE_URL=http://127.0.0.1:9 PRINTER_URI=off DATA_DIR=/tmp/smoke bun dist/start.js &); \
+    up=; for i in $(seq 1 50); do if wget -qO /dev/null http://localhost:8080/api/status; then up=1; break; fi; sleep 0.2; done; \
+    test -n "$up"; \
+    wget -qO /dev/null http://localhost:8080/; \
+    wget -qO /dev/null http://localhost:8080/api/docs/scalar.js; \
+    pkill -f dist/start.js; rm -rf /tmp/smoke; \
+    mkdir -p /data && chown bun:bun /data
 USER bun
 EXPOSE 8080
 VOLUME /data
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s \
-  CMD wget -qO /dev/null "http://localhost:${PORT}/api/status" || exit 1
-# Bun finds the bundled UI's files relative to the working directory, so run from dist/.
-WORKDIR /app/dist
-CMD ["bun", "index.js"]
+  CMD wget -qO /dev/null "http://localhost:${PORT:-8080}/api/status" || exit 1
+CMD ["bun", "/app/dist/start.js"]

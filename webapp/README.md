@@ -105,7 +105,7 @@ docker build --target test .               # full suite in the Alpine image
 # scanner simulator + dev server (see ../CLAUDE.md for the simulator command)
 SERVICE_URL=http://localhost:8765 DATA_DIR=./data bun --hot src/server/index.ts
 # the production bundle the image runs (see build.ts)
-bun build.ts && cd dist && SERVICE_URL=http://localhost:8765 DATA_DIR=../data bun index.js
+bun build.ts && SERVICE_URL=http://localhost:8765 DATA_DIR=./data bun dist/start.js
 # with the Analyse section: run the analyse service (cd ../analyse && docker compose up --build) and add
 # ANALYSE_ENDPOINT=http://localhost:8770
 ```

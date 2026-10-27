@@ -3,18 +3,18 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Scalar } from "@scalar/hono-api-reference";
 import type { Handler } from "hono";
-import { appDir } from "../app-dir";
+import { bundled } from "../app-dir";
 import { fail } from "./errors";
 
-/** Scalar's bundle as build.ts copies it for the production bundle (`vendor/scalar.js` in the app folder). */
-const vendoredBundle = join(appDir(), "vendor", "scalar.js");
+/** Scalar's bundle as build.ts copies it next to the production bundle. */
+const vendoredBundle = bundled ? join(import.meta.dir, "scalar.js") : undefined;
 
 /**
- * Scalar's single-file browser bundle: build.ts's copy, else (running from source) the dev
- * dependency's `dist/browser/standalone.js` (not an exported path, so found next to the package entry `dist/index.js`).
+ * Scalar's single-file browser bundle: build.ts's copy, else (running from source) the dev dependency's
+ * `dist/browser/standalone.js` (not an exported path, so found next to the package entry `dist/index.js`).
  */
 function findScalarBundle(): string | undefined {
-  if (existsSync(vendoredBundle)) return vendoredBundle;
+  if (vendoredBundle && existsSync(vendoredBundle)) return vendoredBundle;
   try {
     const dev = fileURLToPath(new URL("browser/standalone.js", import.meta.resolve("@scalar/api-reference")));
     return existsSync(dev) ? dev : undefined;

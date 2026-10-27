@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync } from "node:fs";
+import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { loadConfig } from "./config";
 import { openDb } from "./db";
@@ -9,18 +9,12 @@ import { deviceIccPath } from "./pipeline/icc";
 import { LiveHub, type LiveSocket } from "./live";
 import { mcpHandler } from "./mcp/http";
 import { AnalyseClient } from "./analyse-client";
-import { bundled } from "./app-dir";
 import { ScannerClient } from "./scanner-client";
 import { resolveAppSecret, SecretBox } from "./secrets";
 import { createServices } from "./services";
 import { PrinterReader } from "./printer";
 import indexHtml from "../web/index.html";
 
-if (bundled && !existsSync("index.html")) {
-  // Bun resolves the bundled UI's files against the working directory.
-  console.error("Run the production bundle from its own folder: cd dist && bun index.js");
-  process.exit(1);
-}
 const config = loadConfig(process.env);
 if (!deviceIccPath())
   console.warn(
