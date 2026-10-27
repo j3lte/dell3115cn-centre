@@ -24,7 +24,7 @@ export type DedaRow = {
 };
 
 export type DedaInsert = Pick<DedaRow, "id" | "name" | "status" | "source" | "scan_id" | "page" | "dpi" | "scanned_at">;
-export type DedaUpdate = Partial<Omit<DedaRow, "id" | "source" | "scanned_at">>;
+export type DedaUpdate = Partial<Omit<DedaRow, "id" | "source">>;
 
 export class DedaRepo {
   constructor(private readonly db: Database) {}

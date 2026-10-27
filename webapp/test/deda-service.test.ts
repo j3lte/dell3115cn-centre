@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import { existsSync, mkdirSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import sharp from "sharp";
@@ -147,6 +147,25 @@ describe("DEDA service", () => {
     expect(a.calls[0]!.dpi).toBe(600);
   });
 
+  test("a tab scan is dated by the scan's creation, not the button press", async () => {
+    let now = new Date(2026, 9, 27, 14, 5, 9).getTime();
+    const deda = await setup(analyser(), () => now);
+    const started = deda.fromScan();
+    now = new Date(2026, 9, 27, 14, 5, 14).getTime(); // the scan is made a few seconds later
+    await deda.idle();
+    expect(deda.get(started.id)).toMatchObject({ status: "done", scannedAt: now, name: "Deda scan 2026-10-27 14:05:14" });
+  });
+
+  test("a renamed tab scan keeps its name when the scan time is set", async () => {
+    let now = new Date(2026, 9, 27, 14, 5, 9).getTime();
+    const deda = await setup(analyser(), () => now);
+    const started = deda.fromScan();
+    deda.rename(started.id, "My page");
+    now += 5000;
+    await deda.idle();
+    expect(deda.get(started.id)).toMatchObject({ name: "My page", scannedAt: now });
+  });
+
   test("a failed tab scan fails the entry with the scan's error", async () => {
     const a = analyser();
     const deda = await setup(a);
@@ -248,6 +267,30 @@ describe("DEDA service", () => {
     expect(h.svc.get(tempId, { includeTemporary: true })).toBeNull();
     expect(existsSync(join(h.dataDir, "scans", tempId))).toBe(false);
     expect(deda.recover()).toBe(0);
+  });
+
+  test("a job whose bookkeeping throws does not stop the queue", async () => {
+    const deda = await setup();
+    const scanId = await storedScan();
+    const first = deda.fromHistory(scanId, 1);
+    const second = deda.fromHistory(scanId, 1);
+    // every read of the first entry throws: the job itself and the failure handler
+    const realGet = DedaRepo.prototype.get;
+    const spy = spyOn(DedaRepo.prototype, "get").mockImplementation(function (this: DedaRepo, id: string) {
+      if (id === first.id) throw new Error("db gone");
+      return realGet.call(this, id);
+    });
+    const errors = spyOn(console, "error").mockImplementation(() => {});
+    let logged = 0;
+    try {
+      await deda.idle();
+      logged = errors.mock.calls.length;
+    } finally {
+      spy.mockRestore();
+      errors.mockRestore();
+    }
+    expect(deda.get(second.id)!.status).toBe("done");
+    expect(logged).toBeGreaterThan(0);
   });
 
   test("rename trims and validates", async () => {

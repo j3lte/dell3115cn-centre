@@ -177,22 +177,29 @@ export class DedaService {
   }
 
   private enqueue(id: string, work: () => Promise<void>): void {
-    this.chain = this.chain.then(async () => {
-      if (!this.repo.get(id)) return; // removed while queued
-      try {
-        await work();
-      } catch (e) {
-        if (!(e instanceof JobFailed || e instanceof AnalyseUnreachable || e instanceof AnalyseFailed)) console.error(`deda ${id}:`, e);
-        if (this.repo.get(id)) this.repo.update(id, { status: "failed", error: message(e) });
-      }
-    });
+    // The chain must never reject: a rejected tail would leave every later job waiting for ever.
+    this.chain = this.chain
+      .then(async () => {
+        try {
+          if (!this.repo.get(id)) return; // removed while queued
+          await work();
+        } catch (e) {
+          if (!(e instanceof JobFailed || e instanceof AnalyseUnreachable || e instanceof AnalyseFailed)) console.error(`deda ${id}:`, e);
+          if (this.repo.get(id)) this.repo.update(id, { status: "failed", error: message(e) });
+        }
+      })
+      .catch((e) => console.error(`deda ${id}: could not record the failure:`, e));
   }
 
   private async scanJob(id: string): Promise<void> {
     let tempId: string | null = null;
     try {
-      tempId = (await this.scans.startAdhoc(DEDA_INPUT, { areaMm: A4_AREA, store: false, origin: "analyse" })).id;
-      this.repo.update(id, { scan_id: tempId });
+      const temp = await this.scans.startAdhoc(DEDA_INPUT, { areaMm: A4_AREA, store: false, origin: "analyse" });
+      tempId = temp.id;
+      // The entry is dated by the scan's creation; a default name follows, a name the user chose stays.
+      const entry = this.repo.get(id);
+      const renamed = entry && entry.name !== dedaName(entry.scanned_at);
+      this.repo.update(id, { scan_id: tempId, scanned_at: temp.createdAt, ...(entry && !renamed ? { name: dedaName(temp.createdAt) } : {}) });
       await this.scans.settled(tempId);
       const s = this.scans.get(tempId, { includeTemporary: true });
       if (!s || s.status !== "ready" || !s.pages.length) throw new JobFailed(s?.error ?? s?.problem ?? "No page was scanned");
