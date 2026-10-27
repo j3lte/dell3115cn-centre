@@ -2,6 +2,7 @@ import { afterEach, expect, test } from "bun:test";
 import { COMMON_INPUT_PROFILES } from "../src/server/common-profiles";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { magickAvailable } from "../src/server/pipeline/magick";
 import { FakeScannerService } from "./fake-service";
 import { tmpdir } from "./helpers";
 
@@ -52,6 +53,16 @@ test("server boots, generates and shows a secret, serves the API and the live so
   ws.close();
   expect(first.type).toBe("status");
 });
+
+test.skipIf(!magickAvailable())("a request that takes longer than Bun's idle timeout still gets its answer", async () => {
+  const fake = new FakeScannerService().start();
+  fakes.push(fake);
+  fake.scenario = { pageDelayMs: 15_000 }; // Bun 1.4.4 cuts a quiet connection after 10-14 s
+  const { base } = await boot({ SERVICE_URL: fake.url, DATA_DIR: tmpdir(), APP_SECRET: "set-by-user", PRINTER_URI: "off" });
+  const r = await fetch(`${base}/api/preview`, { method: "POST" });
+  expect(r.status).toBe(200);
+  expect(r.headers.get("content-type")).toContain("image/png");
+}, 40_000);
 
 test("the live socket refuses a foreign Origin and accepts the app's own", async () => {
   const fake = new FakeScannerService().start();
