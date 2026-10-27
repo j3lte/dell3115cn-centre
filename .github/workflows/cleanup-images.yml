@@ -1,0 +1,33 @@
+# Removes old "build-<hash>" images from GitHub Container Registry: per image (web app and -analyse) the 3 newest build
+# images stay, release tags (x.y.z) and "latest" are never touched, and platform images no longer referenced by any
+# image are removed. Multi-platform images are deleted with their platform images (dataaxiom/ghcr-cleanup-action).
+# CI runs it after publishing on main; it can also be started by hand. It only logs what it would delete (dry run)
+# unless the repository variable GHCR_CLEANUP_DRY_RUN is "false".
+name: Clean up build images
+
+on:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  packages: write
+
+concurrency:
+  group: cleanup-images
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        package: [dell3115cn-centre, dell3115cn-centre-analyse]
+    steps:
+      - uses: dataaxiom/ghcr-cleanup-action@v1
+        with:
+          package: ${{ matrix.package }}
+          exclude-tags: latest,*.*.*
+          keep-n-tagged: 3
+          delete-untagged: true
+          validate: true
+          dry-run: ${{ vars.GHCR_CLEANUP_DRY_RUN != 'false' }}

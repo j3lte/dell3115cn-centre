@@ -254,6 +254,14 @@ jobs:
       - name: Inspect
         run: docker buildx imagetools inspect "$(jq -r '.tags[0]' <<< "$DOCKER_METADATA_OUTPUT_JSON")"
 
+  # After publishing on main: keep the 3 newest build-<hash> images per image (cleanup-images.yml).
+  cleanup:
+    if: ${{ !cancelled() && needs.publish.result == 'success' && github.ref == 'refs/heads/main' }}
+    needs: publish
+    permissions:
+      packages: write
+    uses: ./.github/workflows/cleanup-images.yml
+
   # Release tag x.y.z, once its image is published: CHANGELOG.md's [Unreleased] section becomes the release (heading
   # linked to the comparison with the previous release) and its items become the GitHub release notes.
   release:

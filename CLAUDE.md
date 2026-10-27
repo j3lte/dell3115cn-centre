@@ -68,7 +68,8 @@ was reverse-engineered and is documented in `docs/PROTOCOL.md`.
   latest tag, or an exact version; `tools/version.py`) or push a tag `x.y.z` (semver, no `v`) on `main`; CI publishes
   `ghcr.io/j3lte/dell3115cn-centre:x.y.z` and `:latest`, and the same tags of
   `ghcr.io/j3lte/dell3115cn-centre-analyse` (a release always builds both). Pushes to `main` publish
-  `:build-<short commit hash>`, only for the images whose folder changed.
+  `:build-<short commit hash>`, only for the images whose folder changed; afterwards `cleanup-images.yml` keeps the 3
+  newest build images per image (a dry run unless the repository variable `GHCR_CLEANUP_DRY_RUN` is `false`).
   After publishing a release, CI renames `## [Unreleased]` in `CHANGELOG.md` to `## [x.y.z](<compare link>)`, puts
   a new empty `## [Unreleased]` (followed by three blank lines) above it, commits that to `main` and creates the
   GitHub release with the same items (`tools/changelog.py`). If `[Unreleased]` is empty, the release lists its
