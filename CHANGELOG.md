@@ -4,6 +4,10 @@ Notable changes per release. Releases are tagged `x.y.z`; each heading links to 
 
 ## [Unreleased]
 
+
+
+## [1.1.1](https://github.com/j3lte/dell3115cn-centre/compare/1.1.0...1.1.1)
+
 - Fixed: a preview, or any other request that took more than about 10 seconds before answering (for example a scan
   sent to a slow destination), failed with "Request failed (502)" or an empty reply, because the server closed the
   quiet connection. These requests now wait as long as they need.
