@@ -1,5 +1,5 @@
 import { DEFAULT_FILTER } from "../../src/web/helpers/filter";
-import type { InputProfile, OutputProfile, ScanView } from "../../src/web/types/api";
+import type { InputProfile, OutputProfile, PrinterView, ScanView } from "../../src/web/types/api";
 
 /** Test data and small helpers shared by the web UI tests. */
 
@@ -17,6 +17,17 @@ export const OUTPUTS = [
   { id: 1, name: "To folder", destination: { type: "folder", config: {} } },
   { id: 2, name: "Paperless", destination: { type: "paperless", config: {} } },
 ] as unknown as OutputProfile[];
+
+/** The printer's state (no supplies or alerts), with `over` applied. */
+export const printerViewOf = (over: Partial<PrinterView> = {}): PrinterView => ({
+  supplies: [],
+  alerts: [],
+  severity: null,
+  pageCount: 66098,
+  readAt: null,
+  checkedAt: 1,
+  ...over,
+});
 
 /** Page `n` of a scan, without its own filter. */
 export const page = (n: number) => ({ n, width: 1240, height: 1754, rotation: 0, thumbUrl: `/t/${n}.png`, viewUrl: `/v/${n}.png`, filter: null });

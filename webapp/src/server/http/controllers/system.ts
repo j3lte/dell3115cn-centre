@@ -1,6 +1,6 @@
 import { createRoute, z } from "@hono/zod-openapi";
 import type { Services } from "../../services";
-import { forbidden, json, jsonBody, newRouter } from "../router";
+import { errBody, forbidden, json, jsonBody, newRouter } from "../router";
 import { PrinterViewSchema, ScannerStatusSchema } from "../schemas";
 
 const status = createRoute({
@@ -24,7 +24,18 @@ const refreshPrinter = createRoute({
   path: "/api/printer/refresh",
   tags: ["System"],
   summary: "Ask the printer for a fresh state",
-  responses: { 200: jsonBody(PrinterViewSchema, "The printer's fresh state"), ...forbidden },
+  description:
+    "Sends CUPS a refresh job: the printer wakes up (warm-up noise, nothing is printed) and its state is read. With `ifStale=true` " +
+    "(the web app does this when it is opened) only when the last read is older than the printerWakeHours setting.",
+  request: {
+    query: z.object({
+      ifStale: z
+        .stringbool()
+        .optional()
+        .openapi({ description: "Only wake the printer when the last read is older than the printerWakeHours setting", example: "true" }),
+    }),
+  },
+  responses: { 200: jsonBody(PrinterViewSchema, "The printer's fresh state"), 400: errBody("ifStale is not true or false"), ...forbidden },
 });
 
 const connect = createRoute({
@@ -39,7 +50,10 @@ export function systemController(s: Services) {
   return newRouter()
     .openapi(status, (c) => json(c, s.scanner.status))
     .openapi(printer, async (c) => json(c, await s.printer.get()))
-    .openapi(refreshPrinter, async (c) => json(c, await s.printer.refresh()))
+    .openapi(refreshPrinter, async (c) => {
+      const { ifStale } = c.req.valid("query");
+      return json(c, await (ifStale ? s.printer.refreshIfStale() : s.printer.refresh()));
+    })
     .openapi(connect, (c) => {
       s.scanner.reconnectNow();
       return json(c, { ok: true as const }, 202);

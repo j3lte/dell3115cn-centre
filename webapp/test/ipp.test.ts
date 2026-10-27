@@ -81,3 +81,12 @@ test("getJobAttributesRequest asks for one job's state; jobAttributes reads the 
   const resp = new Uint8Array([2, 0, 0, 0, 0, 0, 0, 5, 0x02, 0x23, 0, 9, ...new TextEncoder().encode("job-state"), 0, 4, 0, 0, 0, 9, 0x03]);
   expect(jobAttributes(parseIpp(resp))).toEqual({ "job-state": [9] });
 });
+
+test("parseIpp turns a dateTime (RFC 2579) into milliseconds since the epoch, honouring its UTC offset", () => {
+  const dt = (bytes: number[]) =>
+    parseIpp(new Uint8Array([2, 0, 0, 0, 0, 0, 0, 1, 0x04, 0x31, 0, 20, ...new TextEncoder().encode("printer-current-time"), 0, 11, ...bytes, 0x03]));
+  // 2026-10-27 11:29:06.5 UTC
+  expect(printerAttributes(dt([0x07, 0xea, 10, 27, 11, 29, 6, 5, 0x2b, 0, 0]))["printer-current-time"]).toEqual([Date.UTC(2026, 9, 27, 11, 29, 6, 500)]);
+  // the same moment written as 12:29:06.5 +01:00
+  expect(printerAttributes(dt([0x07, 0xea, 10, 27, 12, 29, 6, 5, 0x2b, 1, 0]))["printer-current-time"]).toEqual([Date.UTC(2026, 9, 27, 11, 29, 6, 500)]);
+});

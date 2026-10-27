@@ -6,6 +6,7 @@ import type { SettingsRepo } from "../repos/settings-repo";
 import { NotFound } from "./errors";
 
 const SHELF_LIFE_MINUTES = { min: 5, max: 1440 } as const;
+const WAKE_HOURS = { min: 1, max: 720 } as const;
 
 /** The settings as the Settings page sees them: also says whether the app secret was generated (and shows it then). */
 export type SettingsView = AppSettings & { secretGenerated: boolean; generatedSecret?: string };
@@ -64,6 +65,12 @@ export class SettingsService {
         else ids[format as ButtonFormat] = id;
       }
       patch.buttonOutputProfileIds = ids;
+    }
+    if ("printerWakeHours" in b) {
+      const h = intOrNull(b.printerWakeHours, "printerWakeHours");
+      if (h !== null && (h < WAKE_HOURS.min || h > WAKE_HOURS.max))
+        throw new ValidationError(`printerWakeHours must be ${WAKE_HOURS.min}-${WAKE_HOURS.max} hours (or null for never)`);
+      patch.printerWakeHours = h;
     }
     if (opts.allowMcp && "mcpEnabled" in b) {
       if (typeof b.mcpEnabled !== "boolean") throw new ValidationError("mcpEnabled must be true or false");

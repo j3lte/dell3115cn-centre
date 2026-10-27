@@ -15,7 +15,12 @@ const readOnly = { readOnlyHint: true } as const;
 
 /** What assistants may see of the settings: never the MCP switch, key or shelf life. */
 function publicSettings(s: AppSettings) {
-  return { cleanupDays: s.cleanupDays, buttonInputProfileId: s.buttonInputProfileId, buttonOutputProfileIds: s.buttonOutputProfileIds };
+  return {
+    cleanupDays: s.cleanupDays,
+    buttonInputProfileId: s.buttonInputProfileId,
+    buttonOutputProfileIds: s.buttonOutputProfileIds,
+    printerWakeHours: s.printerWakeHours,
+  };
 }
 
 /** Review, delivery, history and administration tools. */
@@ -197,13 +202,18 @@ export function registerAdminTools(server: McpServer, deps: McpDeps): void {
   // ---- settings
   server.registerTool(
     "get_settings",
-    { description: "History cleanup (days, null = off) and the printer Scan button's profiles.", annotations: readOnly },
+    {
+      description:
+        "History cleanup (days, null = off), the printer Scan button's profiles, and printerWakeHours: opening the web app wakes the printer to read it when the last read is older than this (null = never).",
+      annotations: readOnly,
+    },
     () => run(() => jsonResult(publicSettings(settings.read()))),
   );
   server.registerTool(
     "update_settings",
     {
-      description: "Change settings: cleanupDays (number or null), buttonInputProfileId, buttonOutputProfileIds ({ jpeg, tiff, pdf }: profile id or null).",
+      description:
+        "Change settings: cleanupDays (number or null), buttonInputProfileId, buttonOutputProfileIds ({ jpeg, tiff, pdf }: profile id or null), printerWakeHours (1-720 or null).",
       inputSchema: { settings: object },
     },
     (a) => run(() => jsonResult(publicSettings(settings.update(a.settings, { allowMcp: false })))),

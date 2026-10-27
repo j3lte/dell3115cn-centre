@@ -13,13 +13,16 @@ import {
 export type Supply = { name: string; color: string; type: string; level: number | null; low: boolean };
 /**
  * What the CUPS queue knows about the printer: supply levels, the alerts our backend reported (covers, trays, error
- * codes, low supplies; `severity` "error" when printing is blocked) and the lifetime page count.
+ * codes, low supplies; `severity` "error" when printing is blocked) and the lifetime page count. `readAt` is when the
+ * backend last read the printer (after a print job or a refresh job; on this app's clock), `checkedAt` when this app
+ * last asked CUPS.
  */
 export type PrinterView = {
   supplies: Supply[];
   alerts: string[];
   severity: "error" | "warning" | null;
   pageCount: number | null;
+  readAt: number | null;
   checkedAt: number | null;
   error?: string;
   disabled?: true;
@@ -43,10 +46,12 @@ const ATTRS = [
   "marker-levels",
   "marker-low-levels",
   "marker-message",
+  "marker-change-time",
+  "printer-current-time",
   "printer-state-reasons",
   "printer-alert-description",
 ];
-const FRESH_MS = 60_000; // CUPS updates after each job and every 6 hours; alerts should still show up quickly
+const FRESH_MS = 60_000; // CUPS updates after each job and each refresh job; alerts should still show up quickly
 const RETRY_MS = 60_000; // after a failure
 const TIMEOUT_MS = 5000;
 /** A refresh job wakes the printer (warm-up) and reads its state; give up waiting for it after this many seconds. */
@@ -69,14 +74,24 @@ export function suppliesFrom(a: IppAttributes): Supply[] {
   });
 }
 
-/** Supplies, alerts and page count from the queue's attributes. */
-export function printerFrom(a: IppAttributes): Omit<PrinterView, "checkedAt"> {
+/**
+ * Supplies, alerts and page count from the queue's attributes. With `now` (this app's clock), `readAt` is moved onto
+ * that clock: the age is measured on the print server's clock (printer-current-time − marker-change-time), so a print
+ * server whose clock is off doesn't make the state look older or newer than it is.
+ */
+export function printerFrom(a: IppAttributes, now?: number): Omit<PrinterView, "checkedAt"> {
   const reasons = (a["printer-state-reasons"] ?? []).map(String).filter((r) => BACKEND_REASONS.includes(r));
   const message = String(a["printer-alert-description"]?.[0] ?? "");
   const alerts = reasons.length ? message.split("; ").map((s) => s.trim()).filter(Boolean) : [];
   const severity = reasons.some((r) => r.endsWith("-error")) ? "error" : reasons.length ? "warning" : null;
   const pages = /^(\d+) pages printed/.exec(String(a["marker-message"]?.[0] ?? ""));
-  return { supplies: suppliesFrom(a), alerts, severity, pageCount: pages ? Number(pages[1]) : null };
+  const changed = a["marker-change-time"]?.[0]; // seconds; CUPS sets it whenever the backend sends marker attributes
+  const cupsNow = a["printer-current-time"]?.[0];
+  const readAt =
+    typeof changed !== "number" || changed <= 0 ? null
+    : now !== undefined && typeof cupsNow === "number" ? now - (cupsNow - changed * 1000)
+    : changed * 1000;
+  return { supplies: suppliesFrom(a), alerts, severity, pageCount: pages ? Number(pages[1]) : null, readAt };
 }
 
 /** ipp://host[:port]/path → http://host:port/path (631 by default); ipps → https. */
@@ -89,7 +104,15 @@ export function printerHttpUrl(uri: string): string {
 /** What the API and MCP need: something that answers with the printer's state (a PrinterReader, or a test fake). */
 export type PrinterSource = { get(): Promise<PrinterView>; refresh?(): Promise<PrinterView> };
 
-export const PRINTER_OFF: PrinterView = { supplies: [], alerts: [], severity: null, pageCount: null, checkedAt: null, disabled: true };
+export const PRINTER_OFF: PrinterView = {
+  supplies: [],
+  alerts: [],
+  severity: null,
+  pageCount: null,
+  readAt: null,
+  checkedAt: null,
+  disabled: true,
+};
 
 type Fetch = (url: string, init: RequestInit) => Promise<Response>;
 
@@ -151,7 +174,7 @@ export class PrinterReader {
   private async read(uri: string): Promise<PrinterView> {
     const checkedAt = this.clock();
     try {
-      return { ...printerFrom(printerAttributes(await this.ipp(uri, getPrinterAttributesRequest(uri, ATTRS, 1)))), checkedAt };
+      return { ...printerFrom(printerAttributes(await this.ipp(uri, getPrinterAttributesRequest(uri, ATTRS, 1))), checkedAt), checkedAt };
     } catch (e) {
       return this.failed(`Printer status unavailable: ${e instanceof Error ? e.message : String(e)}`);
     }

@@ -12,7 +12,6 @@ own PostScript interpreter. Why, with measurements: [`../docs/PRINTER.md`](../do
 | `filter/pxl-duplex-sides.py` | Fixes Ghostscript 10.0 marking every two-sided page as a front side. |
 | `filter/imagetopdf-img2pdf` + `filter/local.convs` | Keeps JPEGs compressed (`img2pdf`) instead of cups-filters' `imagetopdf`. |
 | `backend/dell3115cn` + `backend/dell3115cn-supplies.py` | Backend wrapper that reports toner, belt unit and fuser levels, alerts (covers, trays, error codes) and the page count (read over USB) to CUPS. |
-| `systemd/dell3115cn-supplies.{service,timer}` | Refreshes those levels at boot and every 6 h without printing. |
 | `ppd/fix-ppd.py` | Optional: fixes Dell's own PostScript PPD if you prefer that driver (see below). |
 | `tests/` | Filter tests: `uv run --with pytest pytest cups/tests` (Ghostscript needed for the end-to-end ones). |
 
@@ -37,9 +36,17 @@ sudo lpadmin -p Dell_MFP_Laser_3115cn -E -v "dell3115cn:<usb URI from above>" -P
   -o printer-is-shared=true
 sudo cupsctl --share-printers
 
-# supply levels at boot and every 6 h
-sudo install -m 644 systemd/dell3115cn-supplies.* /etc/systemd/system/
-sudo systemctl daemon-reload && sudo systemctl enable --now dell3115cn-supplies.timer
+# first supply levels (wakes the printer, prints nothing)
+printf '\n' | lp -d Dell_MFP_Laser_3115cn -t supply-refresh -o raw -
+```
+
+The levels and alerts are read after every print job. A refresh job wakes the printer (warm-up noise), so nothing
+sends one on a timer: the web app sends one when it is opened and the last read is older than its *Printer wake-up*
+setting (24 hours by default), or when you press *Check now*. Upgrading from a version with `dell3115cn-supplies.timer`:
+
+```sh
+sudo systemctl disable --now dell3115cn-supplies.timer
+sudo rm /etc/systemd/system/dell3115cn-supplies.{service,timer} && sudo systemctl daemon-reload
 ```
 
 Check that every input type ends in the PCL XL filter:
@@ -48,8 +55,8 @@ Check that every input type ends in the PCL XL filter:
 sudo cupsfilter -e --list-filters -p /etc/cups/ppd/Dell_MFP_Laser_3115cn.ppd -m printer/foo -i application/pdf /dev/null
 ```
 
-Other queue name: `QUEUE=<name>` in `/etc/default/dell3115cn-supplies`. If the toner order on your printer differs
-from cyan, magenta, yellow, black: `DELL3115_TONER_ORDER` in the same file.
+If the toner order on your printer differs from cyan, magenta, yellow, black: add `SetEnv DELL3115_TONER_ORDER <order>`
+(e.g. `K,C,M,Y`) to `/etc/cups/cupsd.conf` and restart cupsd while no job is printing.
 
 Never restart `cupsd` while a job is printing (`lpstat -o` must be empty): the job restarts and can arrive at the
 printer twice.

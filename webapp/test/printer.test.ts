@@ -96,7 +96,15 @@ test("PrinterReader: an IPP error status is a failure", async () => {
 });
 
 test("PrinterReader without a printer is disabled", async () => {
-  expect(await new PrinterReader(null).get()).toEqual({ supplies: [], alerts: [], severity: null, pageCount: null, checkedAt: null, disabled: true });
+  expect(await new PrinterReader(null).get()).toEqual({
+    supplies: [],
+    alerts: [],
+    severity: null,
+    pageCount: null,
+    readAt: null,
+    checkedAt: null,
+    disabled: true,
+  });
 });
 
 test("printerFrom: our alerts from printer-alert-description, severity from the reasons, page count from marker-message", () => {
@@ -123,7 +131,8 @@ test("PrinterReader asks CUPS for the state reasons, message and marker message 
   const r = new PrinterReader("ipp://pi/printers/P", { fetch: fakeCups(ATTRS, calls) });
   await r.get();
   const body = new TextDecoder().decode(await calls[0]!.arrayBuffer());
-  for (const a of ["printer-state-reasons", "printer-alert-description", "marker-message"]) expect(body).toContain(a);
+  for (const a of ["printer-state-reasons", "printer-alert-description", "marker-message", "marker-change-time", "printer-current-time"])
+    expect(body).toContain(a);
 });
 
 /** CUPS stand-in for a refresh: Print-Job → job 7, Get-Job-Attributes → processing, then completed; printer attributes. */
@@ -159,4 +168,18 @@ test("refresh sends a supply-refresh job, waits for it and reads the fresh state
 
 test("refresh without a printer is the disabled view", async () => {
   expect((await new PrinterReader(null).refresh()).disabled).toBe(true);
+});
+
+test("printerFrom: readAt on this app's clock, from the age on CUPS' own clock (printer-current-time)", () => {
+  const cupsNow = Date.UTC(2026, 9, 27, 11, 29, 6); // the print server's clock, 40 min ahead of ours
+  const a = { ...ATTRS, "marker-change-time": [cupsNow / 1000 - 3600], "printer-current-time": [cupsNow] };
+  const ours = cupsNow - 40 * 60_000;
+  expect(printerFrom(a, ours).readAt).toBe(ours - 3_600_000);
+  expect(printerFrom(a).readAt).toBe(cupsNow - 3_600_000); // without our clock: CUPS' timestamp as it is
+});
+
+test("printerFrom: readAt is when CUPS last got supply data from the backend (marker-change-time, seconds)", () => {
+  expect(printerFrom({ ...ATTRS, "marker-change-time": [1793096659] }).readAt).toBe(1793096659_000);
+  expect(printerFrom(ATTRS).readAt).toBeNull();
+  expect(printerFrom({ ...ATTRS, "marker-change-time": [0] }).readAt).toBeNull(); // never set
 });
