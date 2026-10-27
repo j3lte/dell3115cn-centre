@@ -14,6 +14,8 @@ Notable changes per release. Releases are tagged `x.y.z`; each heading links to 
   from History, with an overview, close-ups and the decoded fields; entries can be renamed and deleted. It needs the
   new optional analyse service, image `ghcr.io/j3lte/dell3115cn-centre-analyse` (GPL-3.0-or-later), and
   `ANALYSE_ENDPOINT` on the web app; see `docs/ANALYSE.md`.
+- The web app image is now based on Alpine Linux instead of Debian: a smaller download (about 220 MiB instead of
+  305 MiB) and less disk space (about 540 MiB instead of 710–740 MiB).
 
 ## [1.0.0](https://github.com/j3lte/dell3115cn-centre/commits/1.0.0)
 

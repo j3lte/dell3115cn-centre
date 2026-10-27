@@ -1,12 +1,16 @@
 # Scan webapp: Bun + React UI, page pipeline (ImageMagick, Tesseract), destinations (smbclient).
 # `docker build .` runs the test suite (stage "test"); the runtime image is only produced if it passes.
 
-FROM oven/bun:1.4-debian AS base
-ENV DEBIAN_FRONTEND=noninteractive
-RUN apt-get update \
- && apt-get install -y --no-install-recommends \
-      imagemagick tesseract-ocr tesseract-ocr-osd smbclient colord-data tzdata ca-certificates \
- && rm -rf /var/lib/apt/lists/*
+# Only colord's sRGB profile is needed; the colord package itself pulls in glib, polkit and more.
+FROM alpine:3.24 AS srgb
+RUN apk add --no-cache colord
+
+FROM oven/bun:1.4-alpine AS base
+# ImageMagick 7 (`magick`) with the PNG/JPEG/TIFF coders; Tesseract only for orientation (osd); smbclient for SMB.
+RUN apk add --no-cache \
+      imagemagick imagemagick-jpeg imagemagick-tiff tesseract-ocr tesseract-ocr-data-osd samba-client tzdata \
+      ca-certificates
+COPY --from=srgb /usr/share/color/icc/colord/sRGB.icc /usr/share/color/icc/colord/sRGB.icc
 WORKDIR /app
 
 FROM base AS deps

@@ -33,7 +33,7 @@ was reverse-engineered and is documented in `docs/PROTOCOL.md`.
 
 - Scanner service tests: `cd scanner-service && uv run --python 3.11 --with pytest pytest -q`
 - Scanner service in simulator mode: `cd scanner-service && SCAN3115_SIM=1 SCAN3115_SPOOL=/tmp/scan3115 uv run --python 3.11 python -m scan3115`
-- Webapp tests: `cd webapp && bun test`; typecheck: `bunx tsc --noEmit -p .`; on Debian with ImageMagick/Tesseract/smbclient: `docker build --target test webapp`
+- Webapp tests: `cd webapp && bun test`; typecheck: `bunx tsc --noEmit -p .`; in its Alpine image with ImageMagick/Tesseract/smbclient: `docker build --target test webapp`
 - Webapp dev: `cd webapp && SERVICE_URL=http://localhost:8765 DATA_DIR=./data bun --hot src/server/index.ts`
 - Analyse service tests: `cd analyse && uv run --with pytest pytest -q`; in its container: `docker build --target test analyse`
 - CUPS filter tests: `uv run --with pytest pytest cups/tests`

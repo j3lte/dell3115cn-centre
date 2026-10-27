@@ -17,7 +17,7 @@ export function deviceIccPath(env: Record<string, string | undefined> = process.
 }
 
 const SRGB_CANDIDATES = [
-  "/usr/share/color/icc/colord/sRGB.icc", // Debian colord-data (Docker image)
+  "/usr/share/color/icc/colord/sRGB.icc", // colord's profile (Docker image)
   "/System/Library/ColorSync/Profiles/sRGB Profile.icc", // macOS (development)
 ];
 

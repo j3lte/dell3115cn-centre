@@ -132,7 +132,7 @@ checking the printed pages.
 ```sh
 cd scanner-service && uv run --python 3.11 --with pytest pytest -q     # service tests (simulator, no hardware)
 cd webapp && bun install && bun test                                 # web app tests
-docker build --target test webapp                                    # web app tests on Debian (ImageMagick, Tesseract)
+docker build --target test webapp                                    # web app tests on Alpine (ImageMagick, Tesseract)
 uv run --with pytest pytest cups/tests                               # print filter tests
 uv run --with pytest pytest tools/tests                               # release script tests (changelog, version)
 cd analyse && uv run --with pytest pytest -q                          # analyse service tests (generated pages)
