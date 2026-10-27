@@ -6,6 +6,6 @@ services:
     image: deda-svc:dev
     ports:
       - "8770:8770"
-    # A 600 dpi A4 page needs most of a GiB while it is analysed (one page at a time).
-    mem_limit: 1g
+    # A 600 dpi A4 page needs up to about 1 GiB while it is analysed (one page at a time); 1.5 GiB leaves headroom.
+    mem_limit: 1536m
     restart: unless-stopped

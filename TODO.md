@@ -12,3 +12,4 @@
 - [ ] PCL XL: measure a full-page JPEG photo and a long multi-page PDF on a Pi Zero 2 W for time and memory.
 - [ ] If phones send raster (URF/PWG) at 600 dpi, advertise 300 dpi rasters instead.
 - [ ] Authentication for the web UI and administration (deferred; the MCP key is visible to anyone who can open Settings).
+- [ ] MCP tool for the DEDA tracking-dot analysis.

@@ -26,6 +26,10 @@ Phone-first, responsive web app for the Dell MFP Laser 3115cn scanner. It talks 
   opening the app does the same when the last read is older than the hours set in Settings → *Printer wake-up* (24 by
   default, or off). Assistants get the same in `scanner_status`, and a fresh report from `refresh_scanner_status`.
 - **Printer button**: Scan → Application → JPEG/TIFF/PDF on the panel starts a scan with the profiles set in Settings.
+- **Analyse → Tracking dots** (optional, with `ANALYSE_ENDPOINT`): scan a printed page from the glass, or pick a
+  colour page from History, and see the printer's yellow tracking dots found and decoded with DEDA by the separate
+  [analyse service](../analyse/). Glass scans for it are temporary and never show in History. See
+  [`docs/ANALYSE.md`](../docs/ANALYSE.md).
 - Live connection status: the app shows when the scanner service or the printer is off and reconnects by itself.
 
 No login: run it on a trusted network.
@@ -54,6 +58,7 @@ Settings (environment variables):
 | `APP_SECRET` | — | Encrypts destination passwords/tokens. If unset, a secret is generated, saved in `DATA_DIR/app-secret`, printed in the log and shown in Settings — copy it into `APP_SECRET`. Changing it makes stored credentials unreadable (profiles then ask to re-enter them). |
 | `TZ` | `UTC` | Time zone for file names (`{date}`, `{time}`) |
 | `PRINTER_URI` | `ipp://<SERVICE_URL host>:631/printers/Dell_MFP_Laser_3115cn` | CUPS queue to read the printer's state from (supplies, alerts, page count) (IPP Get-Printer-Attributes); `off` hides them |
+| `ANALYSE_ENDPOINT` | — | URL of the [analyse service](../analyse/), e.g. `http://analyse:8770`. Turns on the *Analyse* section (tracking dots); unset hides it and `/api/analyse/*` answers 404. See [`docs/ANALYSE.md`](../docs/ANALYSE.md). |
 | `SRGB_ICC` | Debian `colord-data` path | sRGB profile used for the colour transform |
 | `DEVICE_ICC` | `assets/dell3115cn.icm` | The scanner's colour profile (Dell's; not included, see [`assets/README.md`](assets/README.md)). Without it colour scans have a magenta cast; the log warns at startup. |
 
@@ -99,6 +104,8 @@ bun test                                   # unit + integration tests (some skip
 docker build --target test .               # full suite in the Debian image
 # scanner simulator + dev server (see ../CLAUDE.md for the simulator command)
 SERVICE_URL=http://localhost:8765 DATA_DIR=./data bun --hot src/server/index.ts
+# with the Analyse section: run the analyse service (cd ../analyse && docker compose up --build) and add
+# ANALYSE_ENDPOINT=http://localhost:8770
 ```
 
 Colour pages get the scanner's ICC profile (`DEVICE_ICC`, default `assets/dell3115cn.icm`) applied, then sRGB. The scanner's raw white point

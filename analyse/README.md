@@ -21,8 +21,8 @@ is Alpine 3.22 with Alpine's numpy, SciPy, OpenCV, Pillow and ReportLab packages
 from pip without their dependencies (DEDA would otherwise pull in the non-headless `opencv-python` and `eel`, which it
 does not need for decoding). It runs as a non-root user and listens on port 8770 (`PORT` to change).
 
-Memory: one page is analysed at a time; a 600 dpi A4 page peaks at about 0.8 GiB (8-bit input) to 0.9 GiB (16-bit
-input). Give the container at least 1 GiB.
+Memory: one page is analysed at a time; a 600 dpi A4 page peaks at about 0.8 GiB (8-bit input) to just under 1 GiB
+(16-bit input). Give the container 1.5 GiB (`mem_limit: 1536m`); 1 GiB is too tight.
 
 ## API
 

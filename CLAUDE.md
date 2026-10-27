@@ -12,6 +12,7 @@ was reverse-engineered and is documented in `docs/PROTOCOL.md`.
 | `docs/PROTOCOL.md` | The USB scan protocol (authoritative). Read it before touching scanner code. |
 | `docs/PRINTER.md` | The device, firmware, CUPS analysis, printing speed, PCL XL driver, status record (supplies, alerts, page count), network port. |
 | `docs/SCAN-QUALITY.md` | Resolution and bit-depth limits, measured sharpness, deconvolution, tracking dots. |
+| `docs/ANALYSE.md` | User docs for the web app's Analyse section (tracking dots, DEDA) and the `analyse/` service: detection, API, privacy. |
 | `docs/REVERSE-ENGINEERING.md` | How the Dell drivers were decompiled and findings verified. |
 | `docs/screenshots/` | Web app screenshots for the READMEs (see Workflow). |
 | `docs/architecture.svg`, `docs/dell-3115cn.jpg` | README diagram (light/dark via `prefers-color-scheme`) and printer photo (© Dell). |
