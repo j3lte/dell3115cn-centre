@@ -18,29 +18,27 @@ export function usePrinter(): Printer {
     refetchInterval: 60_000,
     refetchIntervalInBackground: true, // keeps polling in a hidden tab, like the old timer
   });
-  const onSuccess = (v: PrinterView) => queryClient.setQueryData(keys.printer, v);
-  const refresh = useMutation({ mutationFn: (): Promise<PrinterView> => unwrap(client.api.printer.refresh.$post({ query: {} })), onSuccess });
-  const refreshIfStale = useMutation({
-    mutationFn: (): Promise<PrinterView> => unwrap(client.api.printer.refresh.$post({ query: { ifStale: "true" } })),
-    onSuccess,
+  const refresh = useMutation({
+    mutationFn: (ifStale: boolean): Promise<PrinterView> =>
+      unwrap(client.api.printer.refresh.$post({ query: ifStale ? { ifStale: "true" } : {} })),
+    onSuccess: (v) => queryClient.setQueryData(keys.printer, v),
   });
-  const { mutate: wakeIfStale } = refreshIfStale;
+  const { mutate, mutateAsync } = refresh;
   useEffect(() => {
     const opened = () => {
-      if (document.visibilityState === "visible") wakeIfStale();
+      if (document.visibilityState === "visible") mutate(true);
     };
     opened();
     document.addEventListener("visibilitychange", opened);
     return () => document.removeEventListener("visibilitychange", opened);
-  }, [wakeIfStale]);
-  const { mutateAsync } = refresh;
+  }, [mutate]);
   const check = useCallback(
     () =>
-      mutateAsync().then(
+      mutateAsync(false).then(
         () => {},
         () => {}, // the regular poll shows the error state
       ),
     [mutateAsync],
   );
-  return { view: data ?? null, checking: refresh.isPending || refreshIfStale.isPending, check };
+  return { view: data ?? null, checking: refresh.isPending, check };
 }

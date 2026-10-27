@@ -55,8 +55,6 @@ const TIMEOUT_MS = 5000;
 /** A refresh job wakes the printer (warm-up) and reads its state; give up waiting for it after this many seconds. */
 const REFRESH_POLLS = 45;
 const JOB_DONE = 7; // job-state canceled (7), aborted (8), completed (9)
-/** refreshIfStale: after a wake that left the read stale (printer off or unplugged), don't wake again for this long. */
-const WAKE_RETRY_MS = 3_600_000;
 
 export function suppliesFrom(a: IppAttributes): Supply[] {
   const list = (k: string) => a[k] ?? [];
@@ -94,11 +92,7 @@ export function printerHttpUrl(uri: string): string {
 }
 
 /** What the API and MCP need: something that answers with the printer's state (a PrinterReader, or a test fake). */
-export type PrinterSource = {
-  get(): Promise<PrinterView>;
-  refresh?(): Promise<PrinterView>;
-  refreshIfStale?(maxAgeMs: number): Promise<PrinterView>;
-};
+export type PrinterSource = { get(): Promise<PrinterView>; refresh?(): Promise<PrinterView> };
 
 export const PRINTER_OFF: PrinterView = {
   supplies: [],
@@ -119,7 +113,6 @@ export class PrinterReader {
   private cached: PrinterView | null = null;
   private pending: Promise<PrinterView> | null = null;
   private refreshing: Promise<PrinterView> | null = null;
-  private lastWake: number | null = null;
   private readonly fetch: Fetch;
   private readonly clock: () => number;
   private readonly wait: (ms: number) => Promise<void>;
@@ -149,21 +142,6 @@ export class PrinterReader {
     if (!this.printerUri) return { ...PRINTER_OFF };
     this.refreshing ??= this.runRefresh(this.printerUri).finally(() => (this.refreshing = null));
     return this.refreshing;
-  }
-
-  /**
-   * The queue's state, but first a refresh (which wakes the printer) when the backend last read the printer more than
-   * `maxAgeMs` ago or never. Not when CUPS is unreachable, and when a wake left the read stale (the printer is off),
-   * not again within an hour.
-   */
-  async refreshIfStale(maxAgeMs: number): Promise<PrinterView> {
-    const v = await this.get();
-    if (v.disabled || v.error) return v;
-    const now = this.clock();
-    if (v.readAt !== null && now - v.readAt <= maxAgeMs) return v;
-    if (this.lastWake !== null && now - this.lastWake < WAKE_RETRY_MS) return v;
-    this.lastWake = now;
-    return this.refresh();
   }
 
   private async runRefresh(uri: string): Promise<PrinterView> {

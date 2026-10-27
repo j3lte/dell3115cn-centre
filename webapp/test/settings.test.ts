@@ -68,8 +68,8 @@ test("update rejects cleanupDays 0", () => {
 
 test("update validates printerWakeHours: whole hours 1-720, or null for never", () => {
   const { service } = make();
-  for (const bad of [0, 721, 1.5, "x", true])
-    expect(() => service.update({ printerWakeHours: bad }, { allowMcp: false })).toThrow("printerWakeHours must be 1-720 hours (or null for never)");
+  for (const bad of [0, 721]) expect(() => service.update({ printerWakeHours: bad }, { allowMcp: false })).toThrow("printerWakeHours must be 1-720 hours");
+  for (const bad of [1.5, "x", true]) expect(() => service.update({ printerWakeHours: bad }, { allowMcp: false })).toThrow("printerWakeHours must be an integer");
   expect(service.update({ printerWakeHours: "6" }, { allowMcp: false }).printerWakeHours).toBe(6);
   expect(service.update({ printerWakeHours: 720 }, { allowMcp: false }).printerWakeHours).toBe(720);
   expect(service.update({ printerWakeHours: null }, { allowMcp: false }).printerWakeHours).toBeNull();

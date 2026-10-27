@@ -29,7 +29,6 @@ async function setup() {
         checkedAt: 5,
       }),
       refresh: async () => ({ supplies: [], alerts: [], severity: null, pageCount: 66099, readAt: 6, checkedAt: 6 }),
-      refreshIfStale: async (ms: number) => ({ supplies: [], alerts: [], severity: null, pageCount: 66100, readAt: ms, checkedAt: 7 }),
     },
   });
   h.settings.ensureMcpKey();
@@ -459,7 +458,9 @@ test("POST /api/printer/refresh?ifStale=true wakes the printer only when the las
   const { call } = await setup();
   const r = await call("POST", "/api/printer/refresh?ifStale=true");
   expect(r.status).toBe(200);
-  expect(r.body).toMatchObject({ pageCount: 66100, readAt: 24 * 3_600_000 }); // the fake echoes the limit it was given
+  expect(r.body.pageCount).toBe(66099); // the fake's last read (readAt 4) is decades old: woken
+  h.settings.update({ printerWakeHours: null }, { allowMcp: false });
+  expect((await call("POST", "/api/printer/refresh?ifStale=true")).body.pageCount).toBe(66098);
   expect((await call("POST", "/api/printer/refresh?ifStale=false")).body.pageCount).toBe(66099);
   expect((await call("POST", "/api/printer/refresh?ifStale=maybe")).status).toBe(400);
 });

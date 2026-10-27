@@ -41,5 +41,5 @@ export function createServices(deps: ServicesDeps): Services {
   const settings = new SettingsService(new SettingsRepo(db), profiles, deps.secret, deps.onMcpChange);
   const calibration = new CalibrationService(settings, client, clock);
   const scans = new ScanService({ repo: new ScanRepo(db), profiles, settings, calibration, client, hub, dataDir }, { clock });
-  return { settings, profiles, scans, calibration, printer: new PrinterService(deps.printer, () => settings.read().printerWakeHours), scanner: client, hub };
+  return { settings, profiles, scans, calibration, printer: new PrinterService(deps.printer, () => settings.read().printerWakeHours, clock), scanner: client, hub };
 }

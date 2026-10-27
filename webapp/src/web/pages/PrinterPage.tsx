@@ -1,6 +1,6 @@
 import { SupplyBar } from "../components/printer/SupplyBar";
 import { CardTitle } from "../components/ui/CardTitle";
-import { cx } from "../helpers/format";
+import { cx, formatWhenShort } from "../helpers/format";
 import type { Printer } from "../types/ui";
 
 /** Printer tab: alerts, toner, belt unit and fuser levels, and the page count, all from the printer's CUPS queue. */
@@ -53,7 +53,7 @@ export function PrinterPage({ printer: { view: printer, checking, check } }: { p
         refilled paper); <strong>Check now</strong> wakes it without printing and reads it again. Opening the app does
         that too when the last check is old (Settings → Printer).
         {printer.readAt !== null && (
-          <> Last read from the printer: {new Date(printer.readAt).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}.</>
+          <> Last read from the printer: {formatWhenShort(printer.readAt)}.</>
         )}
       </p>
     </div>

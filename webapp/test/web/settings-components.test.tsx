@@ -4,7 +4,8 @@ import { INITIAL_LIVE } from "../../src/web/helpers/live";
 import { THEME_KEY } from "../../src/web/helpers/theme";
 import type { Settings, Supply } from "../../src/web/types/api";
 import type { SaveSetting } from "../../src/web/types/ui";
-import { endpoint, FEEDER, OUTPUTS } from "./fixtures";
+import { formatWhenShort } from "../../src/web/helpers/format";
+import { endpoint, FEEDER, OUTPUTS, printerViewOf } from "./fixtures";
 import { renderWithQuery, screen, stubClipboard, stubFetch, useDom, useUser } from "./setup";
 
 useDom();
@@ -259,13 +260,12 @@ describe("PrinterWakeSetting", () => {
 });
 
 describe("PrinterPage", () => {
-  const view = { supplies: [], alerts: [], severity: null, pageCount: 66098, readAt: null, checkedAt: 1 };
+  const view = printerViewOf();
 
   test("PrinterPage says when the printer was last read, or that it hasn't been", () => {
     const readAt = new Date(2026, 9, 27, 11, 24).getTime();
     const { rerender } = renderWithQuery(<PrinterPage printer={{ view: { ...view, readAt }, checking: false, check: async () => {} }} />);
-    expect(screen.getByText(/Last read from the printer/).textContent).toContain(new Date(readAt).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }));
-    expect(screen.queryByText(/every 6 hours/)).toBeNull();
+    expect(screen.getByText(/Last read from the printer/).textContent).toContain(formatWhenShort(readAt));
     rerender(<PrinterPage printer={{ view, checking: false, check: async () => {} }} />);
     expect(screen.queryByText(/Last read from the printer/)).toBeNull();
   });

@@ -67,9 +67,8 @@ export class SettingsService {
       patch.buttonOutputProfileIds = ids;
     }
     if ("printerWakeHours" in b) {
-      const v = b.printerWakeHours;
-      const h = typeof v === "string" && v.trim() !== "" ? Number(v) : v;
-      if (h !== null && (typeof h !== "number" || !Number.isInteger(h) || h < WAKE_HOURS.min || h > WAKE_HOURS.max))
+      const h = intOrNull(b.printerWakeHours, "printerWakeHours");
+      if (h !== null && (h < WAKE_HOURS.min || h > WAKE_HOURS.max))
         throw new ValidationError(`printerWakeHours must be ${WAKE_HOURS.min}-${WAKE_HOURS.max} hours (or null for never)`);
       patch.printerWakeHours = h;
     }

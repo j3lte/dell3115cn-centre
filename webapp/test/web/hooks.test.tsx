@@ -26,7 +26,7 @@ import { useScanStarter } from "../../src/web/hooks/useScanStarter";
 import { startedHere } from "../../src/web/lib/storage";
 import type { OutputProfile, ScanView } from "../../src/web/types/api";
 import { FakeSocket } from "./fake-socket";
-import { endpoint, scanOf } from "./fixtures";
+import { endpoint, printerViewOf, scanOf } from "./fixtures";
 import { stubClipboard, stubFetch, stubMedia, useDom } from "./setup";
 
 useDom();
@@ -416,11 +416,9 @@ test("useLive puts scan messages into the query cache and the live state", () =>
   }
 });
 
-const printerView = (over: object = {}) => ({ supplies: [], alerts: [], severity: null, pageCount: 1, readAt: 1, checkedAt: 1, ...over });
-
 test("usePrinter asks for a refresh-if-stale when the app opens and when the tab becomes visible again, not when hidden", async () => {
-  const { calls } = stubFetch(async (req) => Response.json(printerView({ pageCount: req.method === "POST" ? 2 : 1 })));
-  const stale = () => calls.filter((r) => r.method === "POST" && new URL(r.url).pathname === "/api/printer/refresh");
+  const { calls } = stubFetch(async (req) => Response.json(printerViewOf({ pageCount: req.method === "POST" ? 2 : 1 })));
+  const stale = () => calls.filter((r) => endpoint(r) === "POST /api/printer/refresh");
   const { result } = renderHook(() => usePrinter(), { wrapper: fixedWrapper() });
   await waitFor(() => expect(stale()).toHaveLength(1));
   expect(new URL(stale()[0]!.url).searchParams.get("ifStale")).toBe("true");
@@ -441,7 +439,7 @@ test("usePrinter asks for a refresh-if-stale when the app opens and when the tab
 
 test("usePrinter's check always wakes the printer (no ifStale) and its result becomes the view", async () => {
   const { calls } = stubFetch(async (req) =>
-    Response.json(printerView({ pageCount: req.method === "POST" && !new URL(req.url).searchParams.has("ifStale") ? 3 : 1 })),
+    Response.json(printerViewOf({ pageCount: req.method === "POST" && !new URL(req.url).searchParams.has("ifStale") ? 3 : 1 })),
   );
   const { result } = renderHook(() => usePrinter(), { wrapper: fixedWrapper() });
   await waitFor(() => expect(result.current.view).not.toBeNull());

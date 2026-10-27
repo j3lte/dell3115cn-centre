@@ -30,9 +30,9 @@ const refreshPrinter = createRoute({
   request: {
     query: z.object({
       ifStale: z
-        .enum(["true", "false"])
+        .stringbool()
         .optional()
-        .openapi({ description: "Only wake the printer when the last read is older than the printerWakeHours setting" }),
+        .openapi({ description: "Only wake the printer when the last read is older than the printerWakeHours setting", example: "true" }),
     }),
   },
   responses: { 200: jsonBody(PrinterViewSchema, "The printer's fresh state"), 400: errBody("ifStale is not true or false"), ...forbidden },
@@ -50,9 +50,10 @@ export function systemController(s: Services) {
   return newRouter()
     .openapi(status, (c) => json(c, s.scanner.status))
     .openapi(printer, async (c) => json(c, await s.printer.get()))
-    .openapi(refreshPrinter, async (c) =>
-      json(c, await (c.req.valid("query").ifStale === "true" ? s.printer.refreshIfStale() : s.printer.refresh())),
-    )
+    .openapi(refreshPrinter, async (c) => {
+      const { ifStale } = c.req.valid("query");
+      return json(c, await (ifStale ? s.printer.refreshIfStale() : s.printer.refresh()));
+    })
     .openapi(connect, (c) => {
       s.scanner.reconnectNow();
       return json(c, { ok: true as const }, 202);
