@@ -4,6 +4,10 @@ Notable changes per release. Releases are tagged `x.y.z`; each heading links to 
 
 ## [Unreleased]
 
+
+
+## [1.1.0](https://github.com/j3lte/dell3115cn-centre/compare/1.0.0...1.1.0)
+
 - The printer no longer wakes up every 6 hours to report its state (warm-up noise, beeps). The web app wakes it when
   it is opened and the last check is older than the hours set in Settings → *Printer wake-up* (24 by default, or
   off); the Printer tab shows when the printer was last read. Assistants get a fresh report from the new MCP tool
