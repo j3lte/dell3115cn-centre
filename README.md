@@ -29,7 +29,7 @@ print driver.
 | [`cups/`](cups/) | Print driver: PCL XL rendered on the server by Ghostscript (minutes faster than the printer's own PostScript for photo pages, true grayscale), JPEG-preserving image filter, toner, belt unit and fuser levels in CUPS. |
 | [`tools/scan3115.py`](tools/scan3115.py) | Single-file command-line scanner (pyusb), the original prototype. |
 
-![How it fits together: clients use the web app and CUPS; the web app talks to the scanner service on the Raspberry Pi; both reach the printer over one USB cable](docs/architecture.svg)
+![How it fits together: clients use the web app and CUPS; the web app talks to the scanner service on the Raspberry Pi and, optionally, to the analyse service; both reach the printer over one USB cable](docs/architecture.svg)
 
 Scanning and printing share the USB connection: the scanner is interface 0, CUPS uses interface 1.
 
