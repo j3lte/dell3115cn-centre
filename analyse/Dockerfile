@@ -6,7 +6,10 @@ FROM alpine:3.22 AS base
 RUN apk add --no-cache python3 py3-pip py3-numpy py3-scipy py3-opencv py3-pillow py3-reportlab
 # --no-deps: deda declares opencv-python (the non-headless build) and eel, neither of which is wanted.
 # libdeda imports PyPDF2 and reportlab; reportlab comes from apk above.
-RUN pip install --no-cache-dir --break-system-packages --no-deps deda==2.0b4 PyPDF2==3.0.1
+# --target keeps pip away from the system site-packages: it lists them after installing, and some Alpine package
+# metadata (OpenCV's) makes it fail with "Invalid version: 'python-4.11.0'".
+RUN pip install --no-cache-dir --no-deps --target /opt/deda deda==2.0b4 PyPDF2==3.0.1
+ENV PYTHONPATH=/opt/deda
 WORKDIR /app
 
 FROM base AS test

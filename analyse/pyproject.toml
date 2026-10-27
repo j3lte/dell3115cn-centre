@@ -30,4 +30,7 @@ pythonpath = ["."]
 filterwarnings = [
     # deda needs PyPDF2 3.0.1, which warns about its own deprecation on import.
     "ignore:PyPDF2 is deprecated:DeprecationWarning",
+    # Alpine's reportlab and the import system, on Python 3.12 in the container; not our code.
+    "ignore:ast.NameConstant is deprecated:DeprecationWarning",
+    "ignore:the load_module\\(\\) method is deprecated:DeprecationWarning",
 ]
