@@ -2,6 +2,8 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { createApp } from "../src/server/http/app";
 import type { PrinterSource } from "../src/server/printer";
 import { PRINTER_OFF } from "../src/server/printer";
+import { DEFAULT_FILTER } from "../src/server/pipeline/filters";
+import { magickAvailable } from "../src/server/pipeline/magick";
 import { adhocProfile } from "../src/server/services/scan-service";
 import { captureLog } from "./helpers";
 import { makeHarness, type Harness } from "./scan-harness";
@@ -46,6 +48,44 @@ describe("info", () => {
     await h.svc.cancel(v.id);
     await h.svc.remove(v.id);
     expect(of("scan").slice(-2)).toEqual([`INFO  scan: ${v.id} cancelled`, `INFO  scan: ${v.id} deleted`]);
+  });
+
+  test("review tray edits: one line each", async () => {
+    h = await makeHarness();
+    h.fake.scenario = { pages: 3 };
+    const v = await h.svc.start(h.input().id, h.folderOutput().id, { review: true });
+    await h.svc.settled(v.id);
+    await h.svc.rotate(v.id, 1, 90);
+    await h.svc.reorder(v.id, [3, 1, 2]);
+    await h.svc.removePage(v.id, 2);
+    await h.svc.setScanFilter(v.id, { ...DEFAULT_FILTER, brightness: 10 });
+    await h.svc.setPageFilter(v.id, 1, { ...DEFAULT_FILTER, contrast: 10 });
+    await h.svc.setPageFilter(v.id, 1, null);
+    await h.svc.more(v.id);
+    await h.svc.settled(v.id);
+    expect(of("scan").slice(2, 10)).toEqual([
+      `INFO  scan: ${v.id} page 1 rotated 90°`,
+      `INFO  scan: ${v.id} pages reordered: 3, 1, 2`,
+      `INFO  scan: ${v.id} page 2 removed`,
+      `INFO  scan: ${v.id} filter changed`,
+      `INFO  scan: ${v.id} page 1 filter changed`,
+      `INFO  scan: ${v.id} page 1 filter reset`,
+      `INFO  scan: ${v.id} scanning more pages`,
+      `INFO  scan: ${v.id} scanned 3 page(s), review`,
+    ]);
+  });
+
+  test("printer button: the press, and why nothing started", async () => {
+    h = await makeHarness();
+    await h.svc.fromButton({ button: 1, target: "application", format: "pdf" });
+    expect(of("scan")).toEqual(["INFO  scan: printer button pressed (pdf)", "WARN  scan: printer button: no default profiles are set"]);
+  });
+
+  test.skipIf(!magickAvailable())("preview: started and done", async () => {
+    h = await makeHarness();
+    await h.svc.preview();
+    expect(of("scan")[0]).toBe("INFO  scan: preview started");
+    expect(of("scan")[1]).toMatch(/^INFO  scan: preview done in \d+\.\ds$/);
   });
 
   test("a temporary scan's removal is not logged", async () => {

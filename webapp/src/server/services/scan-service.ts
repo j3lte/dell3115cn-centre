@@ -507,6 +507,7 @@ export class ScanService {
       const jobId = await this.client.startScan(this.request(input, area));
       this.jobs.set(scanId, jobId);
       this.update(scanId, { status: "scanning", error: null });
+      log.info(`${scanId} scanning more pages`);
       this.track(scanId, this.runBatch(scanId, jobId));
       this.broadcast(scanId);
       return this.current(scanId);
@@ -744,6 +745,7 @@ export class ScanService {
       const swap = degrees !== 180;
       this.repo.setPageRotation(scanId, n, (p.rotation + degrees) % 360, swap ? p.height : p.width, swap ? p.width : p.height);
       await this.rerenderThumbs(scanId, n);
+      log.info(`${scanId} page ${n} rotated ${degrees}°`);
       this.broadcast(scanId);
       return this.current(scanId);
     });
@@ -761,6 +763,7 @@ export class ScanService {
       rmSync(this.abs(p.path), { force: true });
       rmSync(this.abs(this.thumbFor(p.path)), { force: true });
       rmSync(this.abs(this.viewFor(p.path)), { force: true });
+      log.info(`${scanId} page ${n} removed`);
       this.broadcast(scanId);
       return this.current(scanId);
     });
@@ -774,6 +777,7 @@ export class ScanService {
         Array.isArray(order) && order.length === current.length && new Set(order).size === order.length && order.every((x) => current.includes(x));
       if (!valid) throw new ValidationError("order must list every page number exactly once");
       this.renumber(scanId, order);
+      log.info(`${scanId} pages reordered: ${order.join(", ")}`);
       this.broadcast(scanId);
       return this.current(scanId);
     });
@@ -785,6 +789,7 @@ export class ScanService {
       this.editable(this.mustRow(scanId));
       this.update(scanId, { filter: JSON.stringify(filter) });
       await this.rerenderThumbs(scanId);
+      log.info(`${scanId} filter changed`);
       this.broadcast(scanId);
       return this.current(scanId);
     });
@@ -797,6 +802,7 @@ export class ScanService {
       this.page(scanId, n);
       this.repo.setPageFilter(scanId, n, filter ? JSON.stringify(filter) : null);
       await this.rerenderThumbs(scanId, n);
+      log.info(`${scanId} page ${n} filter ${filter ? "changed" : "reset"}`);
       this.broadcast(scanId);
       return this.current(scanId);
     });
@@ -992,13 +998,16 @@ export class ScanService {
     const s = this.settings.read();
     const ids = s.buttonOutputProfileIds ?? {};
     const outputId = (e.format ? ids[e.format] : undefined) ?? ids.pdf ?? Object.values(ids).find((v) => typeof v === "number");
+    log.info(`printer button pressed (${e.format ?? "no format"})`);
     if (s.buttonInputProfileId === null || outputId === undefined) {
+      log.warn("printer button: no default profiles are set");
       this.hub.broadcast({ type: "notice", message: "Printer button pressed, but no default profiles are set" });
       return null;
     }
     try {
       return await this.start(s.buttonInputProfileId, outputId, { review: false, origin: "button" });
     } catch (err) {
+      log.warn(`printer button: ${message(err)}`);
       this.hub.broadcast({ type: "notice", message: `Printer button: ${message(err)}` });
       return null;
     }
@@ -1008,6 +1017,8 @@ export class ScanService {
 
   /** Quick 75 dpi colour scan of the whole glass, ICC-corrected PNG. Not stored. */
   async preview(): Promise<Uint8Array<ArrayBuffer>> {
+    log.info("preview started");
+    const t0 = performance.now();
     const jobId = await this.client.startScan({ source: "flatbed", mode: "color", dpi: 75 });
     const work = mkdtempSync(join(tmpdir(), "scan-preview-"));
     try {
@@ -1016,6 +1027,7 @@ export class ScanService {
       if (!result || result.pages < 1) throw new StateError(result?.message || "The preview produced no image");
       const out = join(work, "preview.png");
       await pnmToPng(await this.client.fetchPage(jobId, 1), "color", out, { whiteGains: this.calibration.gains("flatbed") });
+      log.info(`preview done in ${((performance.now() - t0) / 1000).toFixed(1)}s`);
       return new Uint8Array(readFileSync(out));
     } finally {
       await this.client.deleteJob(jobId).catch(() => {});
