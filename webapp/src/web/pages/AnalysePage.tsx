@@ -1,13 +1,13 @@
 import { useEffect } from "react";
 import { useHashParts } from "../hooks/useHashParts";
-import { go } from "../lib/router";
+import { replace } from "../lib/router";
 import { DedaPage } from "./DedaPage";
 
 /** Analyse section: a sub-nav and the selected tool. `#/analyse` (or an unknown tool) opens the first one. */
 export function AnalysePage() {
   const sub = useHashParts()[1];
   useEffect(() => {
-    if (sub !== "deda") go("analyse", "deda");
+    if (sub !== "deda") replace("analyse", "deda");
   }, [sub]);
 
   return (

@@ -1,9 +1,10 @@
-import { beforeAll, describe, expect, test } from "bun:test";
+import { beforeAll, describe, expect, spyOn, test } from "bun:test";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { renderHook, waitFor } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { INITIAL_LIVE } from "../../src/web/helpers/live";
 import { ROUTES, visibleRoutes } from "../../src/web/helpers/routes";
+import { replace } from "../../src/web/lib/router";
 import { noop } from "./fixtures";
 import { renderWithQuery, screen, stubFetch, useDom } from "./setup";
 
@@ -74,5 +75,47 @@ describe("AnalysePage", () => {
     await waitFor(() => expect(location.hash).toBe("#/analyse/deda"));
     await waitFor(() => expect(screen.getByRole("link", { name: "Tracking dots" }).getAttribute("aria-current")).toBe("page"));
     expect(screen.getByRole("heading", { name: "Tracking dots (DEDA)" })).toBeTruthy();
+  });
+});
+
+describe("redirects", () => {
+  // happy-dom's history.length grows on location.replace (a browser's doesn't), so assert the call itself.
+  test("replace navigates with location.replace, in the same hash format as go, and fires hashchange", async () => {
+    location.hash = "#/scan";
+    const spy = spyOn(location, "replace");
+    const heard = new Promise((r) => window.addEventListener("hashchange", r, { once: true }));
+    replace("profiles", "in", "a b");
+    await heard;
+    expect(spy).toHaveBeenCalledWith("#/profiles/in/a%20b");
+    expect(location.hash).toBe("#/profiles/in/a%20b");
+    spy.mockRestore();
+  });
+
+  test("an unknown tool opens Tracking dots through replace, not a new entry", async () => {
+    location.hash = "#/analyse/x";
+    const spy = spyOn(location, "replace");
+    renderWithQuery(<AnalysePage />);
+    await waitFor(() => expect(location.hash).toBe("#/analyse/deda"));
+    expect(spy).toHaveBeenCalledWith("#/analyse/deda");
+    spy.mockRestore();
+  });
+
+  test("a deep link to #/analyse/deda is left alone until the features arrive", async () => {
+    location.hash = "#/analyse/deda";
+    const spy = spyOn(location, "replace");
+    let answer!: (r: Response) => void;
+    stubFetch(() => new Promise<Response>((r) => (answer = r)));
+    function Shell() {
+      const routes = visibleRoutes(useFeatures());
+      return useRoute(routes) === "analyse" ? <AnalysePage /> : <p>Scan</p>;
+    }
+    renderWithQuery(<Shell />);
+    expect(screen.getByText("Scan")).toBeTruthy();
+    expect(location.hash).toBe("#/analyse/deda");
+    await act(async () => answer(Response.json({ analyse: true })));
+    await waitFor(() => expect(screen.getByRole("heading", { name: "Tracking dots (DEDA)" })).toBeTruthy());
+    expect(location.hash).toBe("#/analyse/deda");
+    expect(spy).not.toHaveBeenCalled();
+    spy.mockRestore();
   });
 });

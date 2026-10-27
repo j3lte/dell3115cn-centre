@@ -7,6 +7,13 @@ export function hashParts(): string[] {
     .map((p) => decodeURIComponent(p));
 }
 
+const hashOf = (parts: (string | number)[]) => `#/${parts.map((p) => encodeURIComponent(String(p))).join("/")}`;
+
 export function go(...parts: (string | number)[]): void {
-  location.hash = `#/${parts.map((p) => encodeURIComponent(String(p))).join("/")}`;
+  location.hash = hashOf(parts);
+}
+
+/** Like `go`, but replaces the current history entry: for redirects, so Back doesn't land on the page that redirected. */
+export function replace(...parts: (string | number)[]): void {
+  location.replace(hashOf(parts));
 }
