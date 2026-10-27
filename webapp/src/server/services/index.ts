@@ -1,4 +1,5 @@
 import type { Database } from "bun:sqlite";
+import type { AnalyseClient } from "../analyse-client";
 import type { LiveHub } from "../live";
 import type { PrinterSource } from "../printer";
 import { ProfileRepo } from "../repos/profile-repo";
@@ -20,6 +21,7 @@ export type Services = {
   printer: PrinterService;
   scanner: ScannerClient;
   hub: LiveHub;
+  analyse: AnalyseClient | null;
 };
 
 export type ServicesDeps = {
@@ -30,6 +32,7 @@ export type ServicesDeps = {
   hub: LiveHub;
   dataDir: string;
   printer?: PrinterSource;
+  analyse?: AnalyseClient;
   onMcpChange?: () => void;
   clock?: () => number;
 };
@@ -41,5 +44,5 @@ export function createServices(deps: ServicesDeps): Services {
   const settings = new SettingsService(new SettingsRepo(db), profiles, deps.secret, deps.onMcpChange);
   const calibration = new CalibrationService(settings, client, clock);
   const scans = new ScanService({ repo: new ScanRepo(db), profiles, settings, calibration, client, hub, dataDir }, { clock });
-  return { settings, profiles, scans, calibration, printer: new PrinterService(deps.printer, () => settings.read().printerWakeHours, clock), scanner: client, hub };
+  return { settings, profiles, scans, calibration, printer: new PrinterService(deps.printer, () => settings.read().printerWakeHours, clock), scanner: client, hub, analyse: deps.analyse ?? null };
 }

@@ -33,6 +33,8 @@ export const ScannerStatusSchema = exact<ScannerStatus>()(
     .openapi("ScannerStatus"),
 );
 
+export const FeaturesSchema = exact<{ analyse: boolean }>()(z.object({ analyse: z.boolean() }).openapi("Features"));
+
 const SupplySchema = exact<Supply>()(
   z.object({ name: z.string(), color: z.string(), type: z.string(), level: z.number().nullable(), low: z.boolean() }).openapi("Supply"),
 );

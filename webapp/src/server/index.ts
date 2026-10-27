@@ -8,6 +8,7 @@ import { sameOrigin } from "./http/guard";
 import { deviceIccPath } from "./pipeline/icc";
 import { LiveHub, type LiveSocket } from "./live";
 import { mcpHandler } from "./mcp/http";
+import { AnalyseClient } from "./analyse-client";
 import { ScannerClient } from "./scanner-client";
 import { resolveAppSecret, SecretBox } from "./secrets";
 import { createServices } from "./services";
@@ -45,6 +46,7 @@ const services = createServices({
   hub,
   dataDir: config.dataDir,
   printer: new PrinterReader(config.printerUri),
+  analyse: config.analyseUrl ? new AnalyseClient(config.analyseUrl) : undefined,
   onMcpChange: () => downloads.clear(),
 });
 const { settings, scans } = services;

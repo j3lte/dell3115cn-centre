@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { z } from "@hono/zod-openapi";
 import { hc } from "hono/client";
 import { HTTPException } from "hono/http-exception";
+import { AnalyseClient } from "../src/server/analyse-client";
 import { isUuid } from "../src/server/db";
 import { createApp, type AppType } from "../src/server/http/app";
 import { errorResponse } from "../src/server/http/errors";
@@ -661,4 +662,11 @@ test("ids sent as digit strings are accepted like integers; other strings stay 4
   expect((await call("POST", "/api/destinations/test", { type: "paperless", config: { url: "http://127.0.0.1:1", token: "t" }, id: "99999" })).status).toBe(422);
   expect((await call("POST", `/api/scans/${id}/send`, { outputProfileId: String(h.folderOutput({ format: "png" }).id) })).status).toBe(200);
   expect((await call("POST", `/api/scans/${id}/resend`, { outputProfileId: String(h.folderOutput({ format: "png" }).id) })).status).toBe(200);
+});
+
+test("GET /api/features reports analyse off without a client and on with one", async () => {
+  const { call } = await setup();
+  expect((await call("GET", "/api/features")).body).toEqual({ analyse: false });
+  h.services.analyse = new AnalyseClient("http://analyse.invalid");
+  expect((await call("GET", "/api/features")).body).toEqual({ analyse: true });
 });
