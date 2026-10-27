@@ -2,13 +2,17 @@
 """HTTP API (stdlib only).
 
   GET  /health                 -> 200 {"ok": true, "service": "analyse", "analyses": ["deda"]}
-  POST /deda/?dpi=150..1200    -> body = image bytes; 200 report | 400 invalid | 413 too_large
+  POST /deda/?dpi=150..1200    -> body = image bytes (optionally Content-Encoding: gzip);
+                                  200 report | 400 invalid | 413 too_large | 415 unsupported_encoding
+Responses are gzip-compressed when the client sends Accept-Encoding: gzip.
 """
 
+import gzip
 import json
 import logging
 import threading
 import time
+import zlib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlsplit
 
@@ -16,6 +20,8 @@ from . import report
 
 log = logging.getLogger(__name__)
 MAX_BODY = 256 * 1024 * 1024
+CHUNK = 1024 * 1024  # decompression step: bounds how far past MAX_BODY a bomb can get
+GZIP_MIN = 1024  # smaller responses are sent plain
 DEFAULT_DPI, MIN_DPI, MAX_DPI = 600, 150, 1200
 # One page at a time: a 600 dpi page needs most of a GiB, and decode's warning capture is not thread-safe.
 _analyse_lock = threading.Lock()
@@ -39,6 +45,49 @@ def _parse_dpi(query: str) -> int:
     return dpi
 
 
+def _accepts_gzip(header: str | None) -> bool:
+    for item in (header or "").split(","):
+        name, _, params = item.partition(";")
+        if name.strip().lower() != "gzip":
+            continue
+        q = 1.0
+        for p in params.split(";"):
+            k, _, v = p.partition("=")
+            if k.strip().lower() == "q":
+                try:
+                    q = float(v)
+                except ValueError:
+                    q = 0.0
+        return q > 0
+    return False
+
+
+class _TooLarge(Exception):
+    pass
+
+
+def _gunzip(data: bytes, limit: int) -> bytearray:
+    """Decompress a gzip body in chunks; _TooLarge as soon as the output exceeds limit, _Invalid if corrupt."""
+    d = zlib.decompressobj(wbits=31)
+    out = bytearray()
+    try:
+        view = memoryview(data)
+        for i in range(0, len(view), 65536):  # small input slices keep unconsumed_tail copies cheap
+            pending = view[i:i + 65536]
+            while pending and not d.eof:
+                out += d.decompress(pending, CHUNK)
+                if len(out) > limit:
+                    raise _TooLarge
+                pending = d.unconsumed_tail
+            if d.eof:
+                break
+        if not d.eof or d.unused_data:
+            raise _Invalid("bad gzip body")
+    except zlib.error:
+        raise _Invalid("bad gzip body") from None
+    return out
+
+
 class Handler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
     server_version = "analyse"
@@ -52,8 +101,14 @@ class Handler(BaseHTTPRequestHandler):
 
     def _json(self, status: int, obj, allow: str | None = None) -> None:
         body = json.dumps(obj).encode()
+        gz = len(body) >= GZIP_MIN and _accepts_gzip(self.headers.get("Accept-Encoding"))
+        if gz:
+            body = gzip.compress(body, compresslevel=6)
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
+        self.send_header("Vary", "Accept-Encoding")
+        if gz:
+            self.send_header("Content-Encoding", "gzip")
         self.send_header("Content-Length", str(len(body)))
         if allow:
             self.send_header("Allow", allow)
@@ -107,6 +162,11 @@ class Handler(BaseHTTPRequestHandler):
             self.close_connection = True  # the unread body would corrupt the next request
             self._json(400, {"error": "invalid", "message": str(e)})
             return 400
+        encoding = self.headers.get("Content-Encoding", "identity").strip().lower()
+        if encoding not in ("identity", "gzip"):
+            self.close_connection = True
+            self._json(415, {"error": "unsupported_encoding"})
+            return 415
         if length > MAX_BODY:
             self.close_connection = True
             self._json(413, {"error": "too_large"})
@@ -125,6 +185,15 @@ class Handler(BaseHTTPRequestHandler):
                 self.close_connection = True
                 self._json(400, {"error": "invalid", "message": "incomplete body"})
                 return 400
+            if encoding == "gzip":
+                try:
+                    data = _gunzip(data, MAX_BODY)  # rebinding drops the compressed bytes
+                except _TooLarge:
+                    self._json(413, {"error": "too_large"})
+                    return 413
+                except _Invalid as e:
+                    self._json(400, {"error": "invalid", "message": str(e)})
+                    return 400
             try:
                 result = report.analyse(data, dpi)
             except ValueError as e:

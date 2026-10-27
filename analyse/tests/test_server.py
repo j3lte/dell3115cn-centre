@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
+import gzip
 import json
 import threading
 import time
@@ -37,10 +38,17 @@ def call(url, method="GET", body=None, headers=None):
     req = urllib.request.Request(url, data=body, method=method, headers=headers or {})
     try:
         with urllib.request.urlopen(req, timeout=120) as r:
-            return r.status, r.headers, json.loads(r.read())
+            return r.status, r.headers, _loads(r)
     except urllib.error.HTTPError as e:
         with e:
-            return e.code, e.headers, json.loads(e.read())
+            return e.code, e.headers, _loads(e)
+
+
+def _loads(r):
+    raw = r.read()
+    if r.headers.get("Content-Encoding") == "gzip":
+        raw = gzip.decompress(raw)
+    return json.loads(raw)
 
 
 def test_health(base):
@@ -180,3 +188,106 @@ def test_stalled_client_does_not_block_others(base, monkeypatch):
     assert status == 200
     assert time.monotonic() - t0 < 5
     stalled.close()
+
+
+def _raw(base, path, body, headers):
+    """Like call() but returns the undecoded response body too."""
+    req = urllib.request.Request(base + path, data=body, method="POST", headers=headers)
+    with urllib.request.urlopen(req, timeout=120) as r:
+        return r.status, r.headers, r.read()
+
+
+def test_report_gzipped_when_accepted(base, monkeypatch):
+    big = {"found": True, "images": {"overview": "A" * 5000}}
+    monkeypatch.setattr(report, "analyse", lambda data, dpi: big)
+    status, headers, raw = _raw(base, "/deda/", b"x", {"Accept-Encoding": "gzip"})
+    assert status == 200
+    assert headers["Content-Encoding"] == "gzip"
+    assert headers["Vary"] == "Accept-Encoding"
+    assert int(headers["Content-Length"]) == len(raw) < 1000
+    assert json.loads(gzip.decompress(raw)) == big
+
+
+def test_report_plain_without_accept_encoding(base, monkeypatch):
+    big = {"found": True, "images": {"overview": "A" * 5000}}
+    monkeypatch.setattr(report, "analyse", lambda data, dpi: big)
+    status, headers, raw = _raw(base, "/deda/", b"x", {})
+    assert status == 200
+    assert headers["Content-Encoding"] is None
+    assert headers["Vary"] == "Accept-Encoding"
+    assert json.loads(raw) == big
+
+
+@pytest.mark.parametrize("accept", ["gzip;q=0", "br, deflate", "identity"])
+def test_report_plain_when_gzip_refused(base, monkeypatch, accept):
+    monkeypatch.setattr(report, "analyse", lambda data, dpi: {"pad": "A" * 5000})
+    _, headers, raw = _raw(base, "/deda/", b"x", {"Accept-Encoding": accept})
+    assert headers["Content-Encoding"] is None
+    assert json.loads(raw)["pad"] == "A" * 5000
+
+
+def test_small_body_stays_plain(base):
+    req = urllib.request.Request(base + "/health", headers={"Accept-Encoding": "gzip"})
+    with urllib.request.urlopen(req, timeout=10) as r:
+        assert r.headers["Content-Encoding"] is None
+        assert r.headers["Vary"] == "Accept-Encoding"
+        assert json.loads(r.read())["ok"] is True
+
+
+def test_health_gzipped_when_large_enough(base, monkeypatch):
+    monkeypatch.setattr(server_mod, "GZIP_MIN", 1)
+    req = urllib.request.Request(base + "/health", headers={"Accept-Encoding": "gzip, deflate;q=0.5"})
+    with urllib.request.urlopen(req, timeout=10) as r:
+        assert r.headers["Content-Encoding"] == "gzip"
+        assert json.loads(gzip.decompress(r.read()))["ok"] is True
+
+
+def test_gzip_request_body(base, positive_png):
+    plain = call(base + "/deda/?dpi=300", "POST", positive_png)
+    packed = call(base + "/deda/?dpi=300", "POST", gzip.compress(positive_png, 1),
+                  {"Content-Encoding": "gzip", "Accept-Encoding": "gzip"})
+    assert packed[0] == 200
+    assert packed[1]["Content-Encoding"] == "gzip"
+    assert packed[2]["found"] is plain[2]["found"] is True
+
+
+def test_identity_content_encoding_ok(base, monkeypatch):
+    monkeypatch.setattr(report, "analyse", lambda data, dpi: {"found": False})
+    assert call(base + "/deda/", "POST", b"x", {"Content-Encoding": "identity"})[0] == 200
+
+
+def test_gzip_bomb_rejected(base, monkeypatch):
+    monkeypatch.setattr(server_mod, "MAX_BODY", 1024 * 1024)
+    monkeypatch.setattr(report, "analyse", lambda data, dpi: pytest.fail("analyse must not run"))
+    sizes = []
+    real = server_mod.zlib.decompressobj
+
+    class Obj:
+        def __init__(self, *a, **k):
+            self._o = real(*a, **k)
+
+        def decompress(self, data, max_length=0):
+            out = self._o.decompress(data, max_length)
+            sizes.append(len(out))
+            return out
+
+        def __getattr__(self, n):
+            return getattr(self._o, n)
+
+    monkeypatch.setattr(server_mod.zlib, "decompressobj", lambda *a, **k: Obj(*a, **k))
+    bomb = gzip.compress(bytes(2 * 1024 * 1024))
+    assert len(bomb) < 10_000
+    status, _, body = call(base + "/deda/", "POST", bomb, {"Content-Encoding": "gzip"})
+    assert (status, body) == (413, {"error": "too_large"})
+    assert sum(sizes) <= 1024 * 1024 + server_mod.CHUNK  # never decompressed far past the limit
+
+
+def test_corrupt_gzip_body(base):
+    for body in (b"definitely not gzip", gzip.compress(b"x" * 1000)[:-20]):
+        status, _, out = call(base + "/deda/", "POST", body, {"Content-Encoding": "gzip"})
+        assert (status, out) == (400, {"error": "invalid", "message": "bad gzip body"})
+
+
+def test_unknown_content_encoding(base):
+    status, _, body = call(base + "/deda/", "POST", b"x", {"Content-Encoding": "br"})
+    assert (status, body) == (415, {"error": "unsupported_encoding"})

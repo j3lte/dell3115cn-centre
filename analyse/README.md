@@ -35,7 +35,13 @@ input). Give the container at least 1 GiB.
     (`[y, x]` of the close-ups, px, or `null`) and `images` (base64 PNG: `overview`, and when there are dots
     `closeRaw`, `closeEnhanced`, `closeYellow`);
   - `400 {"error": "invalid", "message": ...}` for a bad `dpi`, a missing or empty body, or an unreadable image;
-  - `413 {"error": "too_large"}` for a body over 256 MiB.
+  - `413 {"error": "too_large"}` for a body over 256 MiB (decompressed size, see below);
+  - `415 {"error": "unsupported_encoding"}` for a `Content-Encoding` other than `gzip` or `identity`.
+
+Compression: send `Accept-Encoding: gzip` and every JSON response of 1 KiB or more comes back gzip-compressed
+(`Content-Encoding: gzip`, `Vary: Accept-Encoding`). A request body may be gzip-compressed too
+(`Content-Encoding: gzip`); the 256 MiB limit then applies to the decompressed size, and a corrupt body answers
+`400 {"error": "invalid", "message": "bad gzip body"}`.
 
 Requests are served one at a time. Nothing is stored and request content is never logged.
 
