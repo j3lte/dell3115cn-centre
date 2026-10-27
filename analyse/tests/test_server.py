@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 import gzip
+import logging
 import json
 import threading
 import time
@@ -317,3 +318,13 @@ def test_trailing_data_after_gzip_rejected(base, monkeypatch, head, tail):
     monkeypatch.setattr(report, "analyse", lambda data, dpi: pytest.fail("analyse must not run"))
     status, _, out = call(base + "/deda/", "POST", head + tail, {"Content-Encoding": "gzip"})
     assert (status, out) == (400, {"error": "invalid", "message": "bad gzip body"})
+
+
+def test_health_checks_log_only_at_debug(base, caplog):
+    # Docker polls /health every 30 s: at info that would be one line per poll.
+    with caplog.at_level(logging.INFO, logger="deda_svc.server"):
+        call(base + "/health")
+    assert not [r for r in caplog.records if "/health" in r.getMessage()]
+    with caplog.at_level(logging.DEBUG, logger="deda_svc.server"):
+        call(base + "/health")
+    assert [r.levelname for r in caplog.records if "/health" in r.getMessage()] == ["DEBUG"]

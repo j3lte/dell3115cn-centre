@@ -99,7 +99,10 @@ class Handler(BaseHTTPRequestHandler):
         pass
 
     def _log(self, status: int, started: float) -> None:
-        log.info("%s %s -> %d (%.2fs)", self.command, urlsplit(self.path).path, status, time.monotonic() - started)
+        path = urlsplit(self.path).path
+        # Health checks come every 30 s from Docker: only at debug.
+        level = logging.DEBUG if path == "/health" else logging.INFO
+        log.log(level, "%s %s -> %d (%.2fs)", self.command, path, status, time.monotonic() - started)
 
     def _json(self, status: int, obj, allow: str | None = None) -> None:
         body = json.dumps(obj).encode()

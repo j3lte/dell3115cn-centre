@@ -7,6 +7,8 @@ Notable changes per release. Releases are tagged `x.y.z`; each heading links to 
 - Fixed: a preview, or any other request that took more than about 10 seconds before answering (for example a scan
   sent to a slow destination), failed with "Request failed (502)" or an empty reply, because the server closed the
   quiet connection. These requests now wait as long as they need.
+- The analyse service no longer logs Docker's health check every 30 seconds; those lines now only show with
+  `LOG_LEVEL=debug`.
 
 ## [1.1.0](https://github.com/j3lte/dell3115cn-centre/compare/1.0.0...1.1.0)
 
