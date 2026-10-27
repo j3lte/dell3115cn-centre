@@ -60,7 +60,7 @@ was reverse-engineered and is documented in `docs/PROTOCOL.md`.
   `docs: …`), a subject line that says what changed, and a body only when the why isn't obvious.
 - **CI** (`.github/workflows/ci.yml`) must pass before merging: service, CUPS and release script
   tests (Debian 12 arm64, like the print server), webapp typecheck, the webapp image build with its test stage, and
-  the `analyse` job (`docker build --target test analyse`).
+  the `analyse` job (`docker build analyse`, which runs the tests).
 - **Releases**: run the manual *Release* workflow (`.github/workflows/release.yml`: patch, minor or major bump of the
   latest tag, or an exact version; `tools/version.py`) or push a tag `x.y.z` (semver, no `v`) on `main`; CI publishes
   `ghcr.io/j3lte/dell3115cn-centre:x.y.z` and `:latest`, and the same tags of

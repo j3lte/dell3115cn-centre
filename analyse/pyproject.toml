@@ -13,6 +13,14 @@ dependencies = [
     "PyPDF2==3.0.1",
 ]
 
+[tool.uv]
+# deda declares opencv-python (the non-headless build) and eel (a GUI that pulls gevent); the Dockerfile skips both with
+# --no-deps. A marker that is never true keeps them out of the local environment too.
+override-dependencies = [
+    "opencv-python; sys_platform == 'never'",
+    "eel; sys_platform == 'never'",
+]
+
 [dependency-groups]
 dev = ["pytest"]
 

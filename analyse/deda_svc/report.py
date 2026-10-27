@@ -21,7 +21,7 @@ def analyse(data: bytes, dpi: int) -> dict:
         raw, enhanced, yellow = closeups_png(rgb, det, dpi, origin)
         images.update(closeRaw=_b64(raw), closeEnhanced=_b64(enhanced), closeYellow=_b64(yellow))
     det.yellow = None  # the largest buffer: free it before the overview
-    images = {"overview": _b64(overview_png(rgb, det.dots, dpi)), **images}
+    images = {"overview": _b64(overview_png(rgb, det.dots)), **images}
     shape_hw = rgb.shape[:2]
     del rgb
     result, error = decode(det.dots, shape_hw, dpi) if det.found else (None, None)

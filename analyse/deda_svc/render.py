@@ -26,7 +26,7 @@ def _png(img: np.ndarray) -> bytes:
     return png.tobytes()
 
 
-def overview_png(rgb: np.ndarray, dots: np.ndarray, dpi: int) -> bytes:
+def overview_png(rgb: np.ndarray, dots: np.ndarray) -> bytes:
     """The page in grey washed out to 200..255, long side OVERVIEW_SIDE px, dots as blue discs."""
     h, w = rgb.shape[:2]
     f = OVERVIEW_SIDE / max(h, w)

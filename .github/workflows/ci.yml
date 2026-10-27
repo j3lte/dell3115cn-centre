@@ -84,6 +84,7 @@ jobs:
     if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/'))
     needs: [scanner-service, cups, tools, webapp, analyse]
     strategy:
+      fail-fast: false # a broken analyse leg must not cancel the web app legs
       matrix:
         include:
           - component: webapp
