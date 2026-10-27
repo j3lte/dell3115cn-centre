@@ -1,7 +1,8 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Find yellow printer tracking dots in a scanned page.
 
-All sizes are tuned for 600 dpi and scaled by dpi / 600. Full-page arrays are float32 or uint8.
+All sizes are tuned for 600 dpi and scaled by dpi / 600. Levels are in 0..1. The page stays uint8 (a 600 dpi A4 page
+is 104 MB); float32 is only used per band of rows and for the yellowness map.
 """
 
 from dataclasses import dataclass
@@ -33,24 +34,23 @@ class Detection:
 
 
 def load_rgb(data: bytes) -> np.ndarray:
-    """Decode PNG (8 or 16 bit), PNM, TIFF or JPEG to H x W x 3 float32 RGB in 0..1."""
+    """Decode PNG (8 or 16 bit), PNM, TIFF or JPEG to H x W x 3 uint8 RGB."""
     img = cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_UNCHANGED)
-    if img is None or img.dtype not in (np.uint8, np.uint16):
+    if (img is None or img.dtype not in (np.uint8, np.uint16)
+            or not (img.ndim == 2 or (img.ndim == 3 and img.shape[2] in (3, 4)))):
         raise ValueError("unreadable image")
-    scale = np.float32(1 / np.iinfo(img.dtype).max)
+    if img.dtype == np.uint16:  # 16 bit to 8 bit, shifting in place: one extra 8-bit buffer only
+        np.right_shift(img, 8, out=img)
+        img = img.astype(np.uint8)
     if img.ndim == 2:
-        img = cv2.cvtColor(img, cv2.COLOR_GRAY2RGB)
-    elif img.shape[2] == 4:
-        img = cv2.cvtColor(img, cv2.COLOR_BGRA2RGB)
-    else:
-        cv2.cvtColor(img, cv2.COLOR_BGR2RGB, dst=img)
-    rgb = np.empty(img.shape, np.float32)
-    np.multiply(img, scale, out=rgb)
-    return rgb
+        return cv2.cvtColor(img, cv2.COLOR_GRAY2RGB)
+    if img.shape[2] == 4:
+        return cv2.cvtColor(img, cv2.COLOR_BGRA2RGB)
+    return cv2.cvtColor(img, cv2.COLOR_BGR2RGB, dst=img)
 
 
 def _paper_white(rgb: np.ndarray) -> np.ndarray:
-    sample = rgb[::4, ::4].reshape(-1, 3)  # a subsample is plenty for a median
+    sample = rgb[::4, ::4].reshape(-1, 3) / np.float32(255)  # a subsample is plenty for a median
     paper = sample[sample.min(axis=1) > PAPER_MIN]
     if len(paper) == 0:
         return np.ones(3, np.float32)
@@ -81,7 +81,9 @@ def _grid_score(yellow: np.ndarray, dots: np.ndarray, period: int) -> float:
 
 
 def detect(rgb: np.ndarray, dpi: int) -> Detection:
-    rgb = np.asarray(rgb, np.float32)
+    """Find the dots in an H x W x 3 uint8 RGB page (from load_rgb)."""
+    if rgb.dtype != np.uint8 or rgb.ndim != 3 or rgb.shape[2] != 3:
+        raise ValueError("expected an H x W x 3 uint8 RGB page")
     s = dpi / 600
     h, w = rgb.shape[:2]
     white = _paper_white(rgb)
@@ -89,7 +91,7 @@ def detect(rgb: np.ndarray, dpi: int) -> Detection:
     yellow = np.empty((h, w), np.float32)
     colour = np.empty((h, w), np.uint8)
     for y0 in range(0, h, BAND):
-        band = rgb[y0:y0 + BAND]
+        band = rgb[y0:y0 + BAND] / np.float32(255)
         ink = band.min(axis=2) <= INK_MIN
         n = band / white
         rg = np.minimum(n[..., 0], n[..., 1])
@@ -102,7 +104,7 @@ def detect(rgb: np.ndarray, dpi: int) -> Detection:
 
     r = round(COLOUR_DILATE * s)
     if r > 0:
-        colour = cv2.dilate(colour, np.ones((2 * r + 1, 2 * r + 1), np.uint8))
+        cv2.dilate(colour, np.ones((2 * r + 1, 2 * r + 1), np.uint8), dst=colour)
     yellow[colour.view(bool)] = 0
     del colour
     cv2.blur(yellow, (3, 3), dst=yellow)
