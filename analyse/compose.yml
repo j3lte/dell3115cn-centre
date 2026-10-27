@@ -1,0 +1,11 @@
+# Development only: builds the image from this folder (the build runs the test suite first).
+# The web app reaches this service through ANALYSE_ENDPOINT, e.g. http://<host>:8770.
+services:
+  analyse:
+    build: .
+    image: deda-svc:dev
+    ports:
+      - "8770:8770"
+    # A 600 dpi A4 page needs most of a GiB while it is analysed (one page at a time).
+    mem_limit: 1g
+    restart: unless-stopped
