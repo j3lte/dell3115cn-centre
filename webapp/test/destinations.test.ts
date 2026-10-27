@@ -38,7 +38,10 @@ function stub(handler: (req: Request, seen: Seen) => Response | Promise<Response
       const s: Seen = { method: req.method, path: new URL(req.url).pathname, headers: req.headers };
       if ((req.headers.get("content-type") ?? "").startsWith("multipart/form-data")) s.form = await req.formData();
       seen.push(s);
-      return handler(req, s);
+      const res = await handler(req, s);
+      // No kept-alive connections: a later test's stub can get the same port, and fetch must not reuse a dead socket.
+      res.headers.set("connection", "close");
+      return res;
     },
   });
   servers.push(server);
